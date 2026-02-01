@@ -18,10 +18,29 @@ class TenantStatus(str, Enum):
 class InvoiceStatus(str, Enum):
     PAID = "PAID"
     UNPAID = "UNPAID"
+    
+class TransactionStatus(str, Enum):
+    PENDING = "PENDING"
+    MATCHED = "MATCHED"
+    IGNORED = "IGNORED"
 
 class PaymentStatus(str, Enum):
     UNVERIFIED = "UNVERIFIED"
     VERIFIIED = "VERIFIED"
+
+class BillType(str, Enum):
+    WATER = "WATER"
+    ELECTRICITY = "ELECTRICITY"
+    OTHER = "OTHER"
+    
+class MaintenanceStatus(str, Enum):
+    PENDING = "PENDING"
+    IN_PROGRESS = "IN PROGRESS"
+    COMPLETED = "COMPLETED"
+    
+class MaintenancePaymentStatus(str, Enum):
+    PAID = "PAID"
+    UNPAID = "UNPAID"
 
 # models
 
@@ -105,15 +124,17 @@ class TenantBase(UserBase):
 class Tenant(TenantBase, table=True):
     id: UUID | None = Field(default_factory=uuid4, primary_key=True)
     created_at: datetime = Field(default_factory=datetime.now)
+    wallet_balance: float = Field(default=0.0)
 
     house: "House" = Relationship(back_populates="tenants")
 
 # Financials
 # Invoices
 class InvoiceBase(SQLModel):
-    tenant_id: str = Field(foreign_key="tenant.id", index=True)
-    hse_id: str = Field(foreign_key="house.id", index=True)
-    amount: float
+    tenant_id: UUID = Field(foreign_key="tenant.id", index=True)
+    hse_id: UUID = Field(foreign_key="house.id", index=True)
+    rent_amount: float | None
+    amount: float | None
     status: InvoiceStatus = Field(default=InvoiceStatus.UNPAID, index=True)
     date_of_gen: datetime = Field(default_factory=datetime.now)
     date_due: datetime
@@ -121,30 +142,90 @@ class InvoiceBase(SQLModel):
 class Invoice(InvoiceBase, table=True):
     id: UUID | None = Field(default_factory=uuid4, primary_key=True)
     comments: str | None
-    created_at: datetime
 
     payments: List["Payment"] = Relationship(back_populates="invoice")
+    utilities: List["UtilityBill"] = Relationship(back_populates="invoice")
+    house: "House" = Relationship()
+    tenant: "Tenant" = Relationship()
 
+class InvoiceGenerationRequest(SQLModel):
+    utilities: List[UtilityBillBase]
+    
+class InvoiceRead(InvoiceBase):
+    id: UUID
+    comments: str | None
+    
+    house: House | None = None
+    tenant: Tenant | None = None
+    utilities: List[UtilityBill] = []
 #transactions
 class TransactionBase(SQLModel):
-    transaction_id: str = Field(unique=True)
+    transaction_reference: str = Field(unique=True)
     transaction_date: datetime 
-    amount: float
+    amount: float 
+    transaction_status: TransactionStatus = Field(default=TransactionStatus.PENDING)
+    
 
 class Transaction(TransactionBase, table=True):
     id: UUID | None = Field(primary_key=True, default_factory=uuid4)
     
+    payments: List["Payment"] = Relationship(back_populates="transaction")
+    
 
 # Payments
 class PaymentBase(SQLModel):
-    invoice_id: str = Field(foreign_key="invoice.id", index=True)
-    amount_expected: float
+    invoice_id: UUID | None = Field(foreign_key="invoice.id", index=True, default=None)
+    maintenance_bill_id: UUID | None = Field(foreign_key="maintenancebill.id", index=True)
+    amount_expected: float | None
     amount_paid: float
-    transcation_id: str = Field(foreign_key="transaction.id", index=True)
+    transaction_ref: str = Field(index=True)
     status: PaymentStatus = Field(default=PaymentStatus.UNVERIFIED, index=True)
+    created_by: UUID = Field(foreign_key="user.id")
 
 class Payment(PaymentBase, table=True):
     id: UUID | None = Field(default_factory=uuid4, primary_key=True)
+    transaction_id: UUID | None = Field(foreign_key="transaction.id", index=True)
     created_at: datetime = Field(default_factory=datetime.now)
 
-    invoice: Invoice = Relationship(back_populates="payments")
+    invoice: Optional["Invoice"] = Relationship(back_populates="payments")
+    maintenance_bill: Optional["MaintenanceBill"] = Relationship(back_populates="payments")
+    transaction: Transaction = Relationship(back_populates="payments")
+
+
+# Utilities
+class UtilityBillBase(SQLModel):
+    date_gen: datetime = Field(default_factory=datetime.now)
+    bill_type: BillType
+    amount : float
+
+class UtilityBill(UtilityBillBase, table=True):
+    id: UUID | None = Field(default_factory=uuid4, primary_key=True)
+    invoice_id: UUID = Field(foreign_key="invoice.id", index=True)
+
+    invoice: Invoice = Relationship(back_populates="utilities")
+
+
+# Maintenance
+class MaintenanceBillBase(SQLModel):
+    hse_id: UUID = Field(foreign_key="house.id", index=True)
+    tenant_id: UUID | None = Field(foreign_key="tenant.id", default=None, index=True)
+    title: str
+    description: str | None
+    labor_cost: float 
+    parts_cost: float 
+    total_amount: float
+    
+    status: MaintenanceStatus = Field(default=MaintenanceStatus.PENDING)
+    payment_status: MaintenancePaymentStatus = Field(default=MaintenancePaymentStatus.UNPAID)
+    
+    date_raised: datetime = Field(default_factory=datetime.now)
+    
+class MaintenanceBill(MaintenanceBillBase, table=True):
+    id: UUID | None = Field(default_factory=uuid4, primary_key=True)
+    
+    house: "House" = Relationship()
+    tenant: "Tenant" = Relationship()
+    
+    payments: List["Payment"] = Relationship(back_populates="maintenance_bill")
+    
+    
