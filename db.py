@@ -10,11 +10,13 @@ from sqlmodel import (
 
 from models import Role
 
-sqlite_file_name = "database.db"
-sqlite_url = f"sqlite:///{sqlite_file_name}"
+# sqlite_file_name = "database.db"
+# sqlite_url = f"sqlite:///{sqlite_file_name}"
 
 connect_args = {"check_same_thread" : False}
-engine = create_engine(sqlite_url, connect_args=connect_args)
+
+DATABASE_URL = "postgresql://postgres:azerty@localhost/rms"
+engine = create_engine(DATABASE_URL, echo=True)
 
 def create_db_and_tables():
     SQLModel.metadata.create_all(engine)
@@ -45,6 +47,6 @@ SessionDep = Annotated[Session, Depends(get_session)]
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    create_db_and_tables()
+    # create_db_and_tables()
     seed_roles()
     yield

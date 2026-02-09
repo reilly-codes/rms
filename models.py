@@ -56,8 +56,8 @@ class TokenData(SQLModel):
 # Roles
 class Role(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
-    name: str = Field(unique=True)
-    description: str
+    name: str | None = Field(unique=True, default=None)
+    description: str | None = None
 
 # Users
 class UserBase(SQLModel):
@@ -176,11 +176,11 @@ class Transaction(TransactionBase, table=True):
 class PaymentBase(SQLModel):
     invoice_id: UUID | None = Field(foreign_key="invoice.id", index=True, default=None)
     maintenance_bill_id: UUID | None = Field(foreign_key="maintenancebill.id", index=True)
-    amount_expected: float | None
+    amount_expected: float | None = None
     amount_paid: float
     transaction_ref: str = Field(index=True)
     status: PaymentStatus = Field(default=PaymentStatus.UNVERIFIED, index=True)
-    created_by: UUID = Field(foreign_key="user.id")
+    created_by: UUID| None = Field(foreign_key="user.id", default=None)
 
 class Payment(PaymentBase, table=True):
     id: UUID | None = Field(default_factory=uuid4, primary_key=True)
@@ -213,12 +213,12 @@ class MaintenanceBillBase(SQLModel):
     description: str | None
     labor_cost: float 
     parts_cost: float 
-    total_amount: float
+    total_amount: float | None = None
     
     status: MaintenanceStatus = Field(default=MaintenanceStatus.PENDING)
     payment_status: MaintenancePaymentStatus = Field(default=MaintenancePaymentStatus.UNPAID)
     
-    date_raised: datetime = Field(default_factory=datetime.now)
+    date_raised: datetime | None = Field(default_factory=datetime.now)
     
 class MaintenanceBill(MaintenanceBillBase, table=True):
     id: UUID | None = Field(default_factory=uuid4, primary_key=True)
@@ -228,4 +228,8 @@ class MaintenanceBill(MaintenanceBillBase, table=True):
     
     payments: List["Payment"] = Relationship(back_populates="maintenance_bill")
     
+class MaintenanceBillRead(MaintenanceBillBase):
+    id: UUID
     
+    house: House | None = None
+    tenant: Tenant | None = None
