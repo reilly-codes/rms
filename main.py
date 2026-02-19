@@ -7,6 +7,7 @@ from datetime import timedelta, datetime
 from sqlmodel import select, or_
 from sqlalchemy.orm import selectinload
 from uuid import UUID
+from pywa_async import WhatsApp, types
 
 from models import (
     Token,
@@ -33,7 +34,11 @@ from models import (
     UtilityBill,
     MaintenanceBillBase, 
     MaintenanceBill,
-    MaintenanceBillRead
+    MaintenanceBillRead,
+    PasswordChange,
+    EditMaintenanceStatus,
+    BroadcastBase, 
+    Broadcast
 )
 
 from auth import (
@@ -41,7 +46,8 @@ from auth import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
     create_access_token,
     get_current_active_user,
-    get_password_hash
+    get_password_hash,
+    change_password
 )
 
 from db import (
@@ -63,6 +69,11 @@ app.add_middleware(
     allow_credentials=True,  
     allow_methods=["*"],     
     allow_headers=["*"],     
+)
+
+wa = WhatsApp(
+    phone_id="",
+    token="",
 )
 
 @app.post("/token", response_model=Token)
@@ -106,6 +117,14 @@ async def register_user(user_in: UserCreate, session: SessionDep):
     session.commit()
     session.refresh(user)
     return user
+
+@app.post("/change-password")
+async def change_user_password(
+    password_data: PasswordChange,
+    current_user: Annotated[User, Depends(read_users_me)],
+    session: SessionDep
+):
+    return await change_password(password_data, current_user, session)
 
 @app.get("/properties/all", response_model=List[Property])
 async def get_properties_by_landlord(
@@ -265,7 +284,7 @@ async def get_single_tenant(
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
 
-    return tenant
+    return tenanty
 
 @app.post("/tenants/create/properties/{property_id}", response_model=Tenant)
 async def create_tenant(
@@ -539,11 +558,13 @@ async def create_payment(
     payment = new_payment.model_dump()
     payment["created_by"] = current_user.id
     
-    session.add(payment)
-    session.commit()
-    session.refresh(payment)
+    db_payment = Payment(**payment)
     
-    return payment
+    session.add(db_payment)
+    session.commit()
+    session.refresh(db_payment)
+    
+    return db_payment
 
 @app.patch("/edit/payment/{payment_id}", response_model=Payment, dependencies=[Depends(read_users_me)])
 async def edit_payment(
@@ -668,3 +689,91 @@ async def reconciliation(
         "matches_found": matched_count,
         "remaining_unverified": len(payments) - matched_count
     }
+    
+@app.get("/maintenance/all", response_model=List[MaintenanceBillRead], response_model_exclude={"labor_cost", "parts_cost", "total_amount"})
+async def get_maintenance_issues(
+    session: SessionDep,
+    current_user: Annotated[User, Depends(read_users_me)]
+):
+    qry = select(MaintenanceBill).join(House).join(Property).where(Property.landlord_id == current_user.id).options(selectinload(MaintenanceBill.house), selectinload(MaintenanceBill.tenant))
+    
+    response = session.exec(qry).all()
+    
+    return response
+
+@app.patch("/maintenance/edit-status/{maintenance_id}", dependencies=[Depends(read_users_me)],response_model=MaintenanceBillRead,  response_model_exclude={"labor_cost", "parts_cost", "total_amount"})
+async def edit_maintenance_issue_status(
+    session: SessionDep,
+    maintenance_id: UUID,
+    status_change: EditMaintenanceStatus
+):
+    maintenance_qry = select(MaintenanceBill).where(MaintenanceBill.id == maintenance_id).options(selectinload(MaintenanceBill.house), selectinload(MaintenanceBill.tenant))
+    maintenance_issue = session.exec(maintenance_qry).first()
+    
+    if not maintenance_issue:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Could not find Maintenace Issue")
+    
+    if status_change.status == None or status_change.status == maintenance_issue.status:
+        return maintenance_issue
+    
+    maintenance_issue.status = status_change.status
+    
+    session.add(maintenance_issue)
+    session.commit()
+    session.refresh(maintenance_issue)
+    
+    return maintenance_issue
+
+@app.post("/maintenance/generate/", dependencies=[Depends(read_users_me)], response_model=MaintenanceBillRead,  response_model_exclude={"labor_cost", "parts_cost", "total_amount"})
+async def generate_maintenance_request(
+    session: SessionDep,
+    new_bill: MaintenanceBillBase
+):
+    bill = new_bill.model_dump()
+    qry = select(Tenant).where(Tenant.hse == bill["hse_id"])
+    tenant = session.exec(qry).first()
+    if tenant:
+        bill["tenant_id"] = tenant.id
+    
+    db_bill = MaintenanceBill(**bill)
+    session.add(db_bill)
+    session.commit()
+    session.refresh(db_bill)
+    
+    bill_qry = select(MaintenanceBill).where(MaintenanceBill.id == db_bill.id).options(selectinload(MaintenanceBill.house), selectinload(MaintenanceBill.tenant))
+    
+    response = session.exec(bill_qry).first()
+    
+    return response
+
+@app.post("/broadcast/send", dependencies=[Depends(read_users_me)], response_model=Broadcast)
+async def send_broadcast_to_user(
+    session: SessionDep,
+    broadcast_detail: BroadcastBase
+):
+    bc = broadcast_detail.model_validate_json()
+    if not bc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Incomplete broadcast")
+
+    tenants = bc.recepient
+    for tenant in tenants:
+        qry = select(Tenant).where(Tenant.id == tenant)
+        et = session.exec(qry).first()
+        if not et:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant Not found")
+        # wa.send_message(
+        #     to=et.tel,
+        #     text=bc.message
+        # )
+        
+        print(bc.message)
+        print(f"Message sent to {et.name}")
+        
+    
+    broadcast = Broadcast(broadcast_detail)
+    
+    session.add(broadcast)
+    session.commit()
+    session.refresh(broadcast)
+    
+    return broadcast

@@ -41,7 +41,11 @@ class MaintenanceStatus(str, Enum):
 class MaintenancePaymentStatus(str, Enum):
     PAID = "PAID"
     UNPAID = "UNPAID"
-
+    
+class MessageType(str, Enum):
+    WHATSAPP = "WHATSAPP"
+    SMS = "SMS"
+    
 # models
 
 # Tokens
@@ -84,7 +88,14 @@ class LoginRequest(SQLModel):
 class UserPublic(UserBase):
     id: UUID
     created_at: datetime
-
+    
+class PasswordChange(SQLModel):
+    current_password: str
+    new_password: str
+    confirm_password: str
+    
+    # reset password comes with tenants module
+    
 # Properties
 class PropertyBase(SQLModel):
     name: str
@@ -211,8 +222,8 @@ class MaintenanceBillBase(SQLModel):
     tenant_id: UUID | None = Field(foreign_key="tenant.id", default=None, index=True)
     title: str
     description: str | None
-    labor_cost: float 
-    parts_cost: float 
+    labor_cost: float | None = None
+    parts_cost: float | None = None
     total_amount: float | None = None
     
     status: MaintenanceStatus = Field(default=MaintenanceStatus.PENDING)
@@ -233,3 +244,16 @@ class MaintenanceBillRead(MaintenanceBillBase):
     
     house: House | None = None
     tenant: Tenant | None = None
+    
+class EditMaintenanceStatus(SQLModel):
+    status: MaintenanceStatus | None = None
+    
+class BroadcastBase(SQLModel):
+    message: str
+    message_type: MessageType = Field(default=MessageType.WHATSAPP)
+    recepient: List[UUID]
+    
+class Broadcast(BroadcastBase):
+    id: UUID | None = Field(default_factory=uuid4, primary_key=True)
+    sent_at: datetime | None = Field(default_factory=datetime.now)
+    
