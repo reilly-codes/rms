@@ -23,7 +23,6 @@ from models import (
     Payment,
     UtilityBill,
     MaintenanceBill, 
-    Broadcast,
 )
 
 # this is the Alembic Config object, which provides

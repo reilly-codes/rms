@@ -256,8 +256,5 @@ class BroadcastBase(SQLModel):
     message: str
     message_type: MessageType = Field(default=MessageType.WHATSAPP)
     recepient: List[UUID]
-    
-class Broadcast(BroadcastBase):
-    id: UUID | None = Field(default_factory=uuid4, primary_key=True)
-    sent_at: datetime | None = Field(default_factory=datetime.now)
+
     

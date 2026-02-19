@@ -749,7 +749,7 @@ async def generate_maintenance_request(
     
     return response
 
-@app.post("/broadcast/send", dependencies=[Depends(read_users_me)], response_model=Broadcast)
+@app.post("/broadcast/send", dependencies=[Depends(read_users_me)])
 async def send_broadcast_to_user(
     session: SessionDep,
     broadcast_detail: BroadcastBase
@@ -771,12 +771,7 @@ async def send_broadcast_to_user(
         
         print(bc.message)
         print(f"Message sent to {et.name}")
-        
     
-    broadcast = Broadcast(broadcast_detail)
-    
-    session.add(broadcast)
-    session.commit()
-    session.refresh(broadcast)
-    
-    return broadcast
+    return {"Message" : "Broadcast successfully sent."}
+
+# handle tenant wallet balance
