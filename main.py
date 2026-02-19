@@ -34,6 +34,7 @@ from models import (
     UtilityBill,
     MaintenanceBillBase, 
     MaintenanceBill,
+    MaintenanceBillUpdate,
     MaintenanceBillRead,
     PasswordChange,
     EditMaintenanceStatus,
@@ -284,7 +285,7 @@ async def get_single_tenant(
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
 
-    return tenanty
+    return tenant
 
 @app.post("/tenants/create/properties/{property_id}", response_model=Tenant)
 async def create_tenant(
@@ -502,17 +503,19 @@ async def generate_tenant_maintenance_bill(
 async def edit_specific_maintenance_bill(
     session: SessionDep,
     maintenance_bill_id: UUID,
-    edit_bill: MaintenanceBillBase
+    edit_bill: MaintenanceBillUpdate
 ):
     query = select(MaintenanceBill).where(MaintenanceBill.id == maintenance_bill_id).options(selectinload(MaintenanceBill.house), selectinload(MaintenanceBill.tenant))
     mb = session.exec(query).first()
     if not mb:
-        raise HTTPException(status_code=404, detail="Maintenance bill xould not be found")
+        raise HTTPException(status_code=404, detail="Maintenance bill could not be found")
     
     bill = edit_bill.model_dump(exclude_unset=True)
     
     for key,value in bill.items():
         setattr(mb, key, value)
+        
+    mb.total_amount = mb.labor_cost + mb.parts_cost
     
     session.add(mb)
     session.commit()

@@ -231,6 +231,10 @@ class MaintenanceBillBase(SQLModel):
     
     date_raised: datetime | None = Field(default_factory=datetime.now)
     
+class MaintenanceBillUpdate(SQLModel):
+    labor_cost: float | None = None
+    parts_cost: float | None = None
+    
 class MaintenanceBill(MaintenanceBillBase, table=True):
     id: UUID | None = Field(default_factory=uuid4, primary_key=True)
     
