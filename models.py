@@ -186,7 +186,7 @@ class Transaction(TransactionBase, table=True):
 # Payments
 class PaymentBase(SQLModel):
     invoice_id: UUID | None = Field(foreign_key="invoice.id", index=True, default=None)
-    maintenance_bill_id: UUID | None = Field(foreign_key="maintenancebill.id", index=True)
+    # maintenance_bill_id: UUID | None = Field(foreign_key="maintenancebill.id", index=True)
     amount_expected: float | None = None
     amount_paid: float
     transaction_ref: str = Field(index=True)
@@ -199,7 +199,7 @@ class Payment(PaymentBase, table=True):
     created_at: datetime = Field(default_factory=datetime.now)
 
     invoice: Optional["Invoice"] = Relationship(back_populates="payments")
-    maintenance_bill: Optional["MaintenanceBill"] = Relationship(back_populates="payments")
+    # maintenance_bill: Optional["MaintenanceBill"] = Relationship(back_populates="payments")
     transaction: Transaction = Relationship(back_populates="payments")
 
 
@@ -219,7 +219,7 @@ class UtilityBill(UtilityBillBase, table=True):
 # Maintenance
 class MaintenanceBillBase(SQLModel):
     hse_id: UUID = Field(foreign_key="house.id", index=True)
-    tenant_id: UUID | None = Field(foreign_key="tenant.id", default=None, index=True)
+    # tenant_id: UUID | None = Field(foreign_key="tenant.id", default=None, index=True)
     title: str
     description: str | None
     labor_cost: float | None = None
@@ -227,7 +227,7 @@ class MaintenanceBillBase(SQLModel):
     total_amount: float | None = None
     
     status: MaintenanceStatus = Field(default=MaintenanceStatus.PENDING)
-    payment_status: MaintenancePaymentStatus = Field(default=MaintenancePaymentStatus.UNPAID)
+    # payment_status: MaintenancePaymentStatus = Field(default=MaintenancePaymentStatus.UNPAID)
     
     date_raised: datetime | None = Field(default_factory=datetime.now)
     
@@ -239,15 +239,15 @@ class MaintenanceBill(MaintenanceBillBase, table=True):
     id: UUID | None = Field(default_factory=uuid4, primary_key=True)
     
     house: "House" = Relationship()
-    tenant: "Tenant" = Relationship()
+    # tenant: "Tenant" = Relationship()
     
-    payments: List["Payment"] = Relationship(back_populates="maintenance_bill")
+    # payments: List["Payment"] = Relationship(back_populates="maintenance_bill")
     
 class MaintenanceBillRead(MaintenanceBillBase):
     id: UUID
     
     house: House | None = None
-    tenant: Tenant | None = None
+    # tenant: Tenant | None = None
     
 class EditMaintenanceStatus(SQLModel):
     status: MaintenanceStatus | None = None

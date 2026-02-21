@@ -39,7 +39,6 @@ from models import (
     PasswordChange,
     EditMaintenanceStatus,
     BroadcastBase, 
-    Broadcast
 )
 
 from auth import (
@@ -464,17 +463,17 @@ async def get_all_maintenance_bills(
     session: SessionDep,
     current_user: Annotated[User, Depends(read_users_me)],
     hse_id: UUID | None = None,
-    tenant_id: UUID | None = None
+    # tenant_id: UUID | None = None
 ):
     statement = select(MaintenanceBill).join(House).join(Property).where(Property.landlord_id == current_user.id)
     
     if hse_id:
         statement = statement.where(MaintenanceBill.hse_id == hse_id)
         
-    if tenant_id:
-        statement = statement.where(MaintenanceBill.tenant_id == tenant_id)
+    # if tenant_id:
+    #     statement = statement.where(MaintenanceBill.tenant_id == tenant_id)
         
-    statement = statement.options(selectinload(MaintenanceBill.payments), selectinload(MaintenanceBill.tenant), selectinload(MaintenanceBill.house))
+    statement = statement.options(selectinload(MaintenanceBill.house))
     
     mbs = session.exec(statement).all()
     
@@ -486,11 +485,11 @@ async def generate_tenant_maintenance_bill(
     new_bill: MaintenanceBillBase
 ):
     bill = new_bill.model_dump()
-    qry = select(Tenant).where(Tenant.hse == bill["hse_id"])
-    tenant = session.exec(qry).first()
-    if tenant:
-        bill["tenant_id"] = tenant.id
-    print(bill)
+    # qry = select(Tenant).where(Tenant.hse == bill["hse_id"])
+    # tenant = session.exec(qry).first()
+    # if tenant:
+    #     bill["tenant_id"] = tenant.id
+    # print(bill)
     bill["total_amount"] = bill["labor_cost"] + bill["parts_cost"]
     db_bill = MaintenanceBill(**bill)
     session.add(db_bill)
@@ -505,7 +504,7 @@ async def edit_specific_maintenance_bill(
     maintenance_bill_id: UUID,
     edit_bill: MaintenanceBillUpdate
 ):
-    query = select(MaintenanceBill).where(MaintenanceBill.id == maintenance_bill_id).options(selectinload(MaintenanceBill.house), selectinload(MaintenanceBill.tenant))
+    query = select(MaintenanceBill).where(MaintenanceBill.id == maintenance_bill_id).options(selectinload(MaintenanceBill.house))
     mb = session.exec(query).first()
     if not mb:
         raise HTTPException(status_code=404, detail="Maintenance bill could not be found")
@@ -532,19 +531,19 @@ async def get_all_payments(
     date_from: datetime | None = None,
     date_to: datetime | None = None
 ):
-    statement = select(Payment).join(Invoice, isouter=True).join(MaintenanceBill, isouter=True)
+    statement = select(Payment).join(Invoice, isouter=True)
     
     if hse_id:
         statement = statement.where(
-            (Invoice.hse_id == hse_id) | (MaintenanceBill.hse_id == hse_id)
+            (Invoice.hse_id == hse_id)
         )
         
     if tenant_id:
         statement = statement.where(
-            (Invoice.tenant_id == tenant_id) | (MaintenanceBill.tenant_id == tenant_id)
+            (Invoice.tenant_id == tenant_id) 
         )
         
-    statement = statement.join(House, (House.id == Invoice.hse_id) | (House.id == MaintenanceBill.hse_id), isouter=True)
+    statement = statement.join(House, (House.id == Invoice.hse_id) , isouter=True)
     statement = statement.join(Property, Property.id == House.property_id, isouter=True)
     statement = statement.where(Property.landlord_id == current_user.id)
     
@@ -698,7 +697,7 @@ async def get_maintenance_issues(
     session: SessionDep,
     current_user: Annotated[User, Depends(read_users_me)]
 ):
-    qry = select(MaintenanceBill).join(House).join(Property).where(Property.landlord_id == current_user.id).options(selectinload(MaintenanceBill.house), selectinload(MaintenanceBill.tenant))
+    qry = select(MaintenanceBill).join(House).join(Property).where(Property.landlord_id == current_user.id).options(selectinload(MaintenanceBill.house))
     
     response = session.exec(qry).all()
     
@@ -710,7 +709,7 @@ async def edit_maintenance_issue_status(
     maintenance_id: UUID,
     status_change: EditMaintenanceStatus
 ):
-    maintenance_qry = select(MaintenanceBill).where(MaintenanceBill.id == maintenance_id).options(selectinload(MaintenanceBill.house), selectinload(MaintenanceBill.tenant))
+    maintenance_qry = select(MaintenanceBill).where(MaintenanceBill.id == maintenance_id).options(selectinload(MaintenanceBill.house))
     maintenance_issue = session.exec(maintenance_qry).first()
     
     if not maintenance_issue:
@@ -733,17 +732,17 @@ async def generate_maintenance_request(
     new_bill: MaintenanceBillBase
 ):
     bill = new_bill.model_dump()
-    qry = select(Tenant).where(Tenant.hse == bill["hse_id"])
-    tenant = session.exec(qry).first()
-    if tenant:
-        bill["tenant_id"] = tenant.id
+    # qry = select(Tenant).where(Tenant.hse == bill["hse_id"])
+    # tenant = session.exec(qry).first()
+    # if tenant:
+    #     bill["tenant_id"] = tenant.id
     
     db_bill = MaintenanceBill(**bill)
     session.add(db_bill)
     session.commit()
     session.refresh(db_bill)
     
-    bill_qry = select(MaintenanceBill).where(MaintenanceBill.id == db_bill.id).options(selectinload(MaintenanceBill.house), selectinload(MaintenanceBill.tenant))
+    bill_qry = select(MaintenanceBill).where(MaintenanceBill.id == db_bill.id).options(selectinload(MaintenanceBill.house))
     
     response = session.exec(bill_qry).first()
     
