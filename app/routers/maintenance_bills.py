@@ -13,7 +13,7 @@ from app.models.maintenance_bill import MaintenanceBill
 from app.schemas.maintenance_bill import MaintenanceBillBase, MaintenanceBillRead, EditMaintenanceStatus
 
 router = APIRouter(
-    prefix="/maintenace",
+    prefix="/maintenance",
     tags=["Repairs"],
     dependencies=[Depends(active_user)]
 )
