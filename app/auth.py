@@ -11,8 +11,11 @@ from datetime import timedelta, datetime, timezone
 from dotenv import load_dotenv
 from sqlmodel import Session, select
 
-from db import get_session
-from models import TokenData, User, PasswordChange
+from app.db import get_session
+from app.models.user import User
+from app.schemas.token import TokenData
+from app.schemas.user import PasswordChange
+
 
 load_dotenv()
 JWT_SECRET_KEY=os.getenv("JWT_SECRET_KEY")

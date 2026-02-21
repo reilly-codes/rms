@@ -8,10 +8,7 @@ from sqlmodel import (
     select,
 )
 
-from models import Role
-
-# sqlite_file_name = "database.db"
-# sqlite_url = f"sqlite:///{sqlite_file_name}"
+from app.models.role import Role
 
 connect_args = {"check_same_thread" : False}
 

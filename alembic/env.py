@@ -11,19 +11,18 @@ from sqlalchemy import pool
 from alembic import context
 
 from sqlmodel import SQLModel
-from db import  DATABASE_URL
-from models import (
-    User,
-    Role,
-    Property,
-    House,
-    Tenant,
-    Invoice,
-    Transaction,
-    Payment,
-    UtilityBill,
-    MaintenanceBill, 
-)
+from app.db import  DATABASE_URL
+
+from app.models.role import Role
+from app.models.user import User
+from app.models.property import Property
+from app.models.house import House
+from app.models.tenant import Tenant
+from app.models.invoice import Invoice
+from app.models.transaction import Transaction
+from app.models.payment import Payment
+from app.models.utility import UtilityBill
+from app.models.maintenance_bill import MaintenanceBill
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
