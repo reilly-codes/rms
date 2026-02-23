@@ -25,3 +25,10 @@ class PasswordChange(SQLModel):
     confirm_password: str
     
     # reset password comes with tenants module
+class RequestResetPassword(SQLModel):
+    email: str    
+
+class ResetPassword(SQLModel):
+    secret_token: str
+    new_password: str
+    confirm_password: str

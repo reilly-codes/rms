@@ -14,7 +14,7 @@ from sqlmodel import Session, select
 from app.db import get_session
 from app.models.user import User
 from app.schemas.token import TokenData
-from app.schemas.user import PasswordChange
+from app.schemas.user import PasswordChange, ResetPassword
 
 
 load_dotenv()
@@ -91,7 +91,7 @@ async def get_current_active_user(current_user: Annotated[User, Depends(get_curr
 async def change_password(
     password_data: PasswordChange,
     current_user: User,
-    session: Session 
+    session: Session
 ):
     if password_data.new_password != password_data.confirm_password:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="New passwords do not match")
@@ -108,3 +108,43 @@ async def change_password(
     session.refresh(current_user)
     
     return {"message": "Password updated successfully"}
+
+def create_reset_password_token(user: User):
+    data = {
+        "sub" : user.email,
+        "exp" : datetime.now() + timedelta(minutes=10)
+    }
+    token = jwt.encode(data, JWT_SECRET_KEY, algorithms=[ALGORITHM])
+    
+    return token
+
+async def reset_password(
+    reset_data: ResetPassword,
+    session: Session 
+):
+    try:
+        payload = jwt.decode(reset_data.secret_token, JWT_SECRET_KEY, algorithms=[ALGORITHM])
+        email: str = payload.get("sub")
+        
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Token has expired")
+        
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Invalid Token")
+    
+    if not email:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User could not be found")
+    
+    if reset_data.new_password != reset_data.confirm_password:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="New Password and confirm password must be same")
+    
+    qry = select(User).where(User.email == email)
+    user = session.exec(qry).first()
+    
+    hashed_password = get_password_hash(reset_data.new_password)
+    user.hashed_password = hashed_password
+    session.add(user)
+    session.commit()
+    session.refresh(user)
+    
+    return {"message" :  "Password reset successfully", "succes" : True, "status_code" : status.HTTP_200_OK}
