@@ -20,12 +20,13 @@ mail_conf = ConnectionConfig(
     MAIL_USERNAME=os.getenv("MAIL_USERNAME"),
     MAIL_PASSWORD=os.getenv("MAIL_PASSWORD"),
     MAIL_FROM=os.getenv("MAIL_FROM"),
-    MAIL_PORT=os.getenv("MAIL_PORT"),
+    MAIL_PORT=int(os.getenv("MAIL_PORT", 587)),
     MAIL_SERVER=os.getenv("MAIL_SERVER"),
     MAIL_STARTTLS=True,
     MAIL_SSL_TLS=False,
     USE_CREDENTIALS=True,
-    VALIDATE_CERTS=True
+    VALIDATE_CERTS=True,
+    SUPPRESS_SEND=1
 )
 
 @router.get("/current", response_model=User)
@@ -47,7 +48,7 @@ async def register_landlord(
     session.refresh(user)
     return user
 
-@router.post("/change-password")
+@router.patch("/change-password")
 async def change_user_password(
     password_data: PasswordChange,
     current_user: Annotated[User, Depends(active_user)],
@@ -72,27 +73,29 @@ async def request_reset_password_link(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User could not be found")
     
     # send email logic
-    origin_strings = os.getenv("ALLOWED_FRONTENDS")
+    origin_strings = os.getenv("ALLOWED_FRONTENDS", "http://localhost:8080/")
     ALLOWED_ORIGINS_LIST = origin_strings.split(",")
     try:
         reset_token = create_reset_password_token(user)
+        print("Token : ",reset_token)
         if origin and origin in ALLOWED_ORIGINS_LIST:
             frontend_url = origin
+        else:
+            frontend_url = ALLOWED_ORIGINS_LIST[0]
         forgot_url = f"{frontend_url}/reset-password?token={reset_token}"
-        email_body = {
-            "link_expiry" : "10 Minutes",
-            "reset_link" : forgot_url
-        }
+        plain_text_body = f"Click the link to reset your password: {forgot_url}\n\nThis link expires in 10 minutes."
+        
         message = MessageSchema(
             subject="Password Reset Instructions",
             recipients=[user.email],
-            template_body=email_body,
-            subtype=MessageType.html
+            body=plain_text_body, 
+            subtype=MessageType.plain
         )
         
-        template_name = None
         fm = FastMail(mail_conf)
-        bg_tasks.add_task(fm.send_message, message, template_name)
+        bg_tasks.add_task(fm.send_message, message)
+        
+        print(message)
         
         return { "message" : f"Reset password email has been sent to {user.email}", "success" : True, "status_code" : status.HTTP_200_OK }
         

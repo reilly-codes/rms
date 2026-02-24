@@ -114,7 +114,7 @@ def create_reset_password_token(user: User):
         "sub" : user.email,
         "exp" : datetime.now() + timedelta(minutes=10)
     }
-    token = jwt.encode(data, JWT_SECRET_KEY, algorithms=[ALGORITHM])
+    token = jwt.encode(data, JWT_SECRET_KEY, algorithm=ALGORITHM)
     
     return token
 
