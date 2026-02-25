@@ -16,6 +16,8 @@ router = APIRouter(
     tags=["Users"]
 )
 
+load_dotenv()
+
 mail_conf = ConnectionConfig(
     MAIL_USERNAME=os.getenv("MAIL_USERNAME"),
     MAIL_PASSWORD=os.getenv("MAIL_PASSWORD"),
