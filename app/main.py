@@ -28,7 +28,7 @@ origins = [
     "http://localhost:5173",
     "http://localhost:8080",
     "http://127.0.0.1:8080",
-    "rentmgt.netlify.app",
+    "https://rentmgt.netlify.app",
     "https://rms-ii8e.onrender.com"
 ]
 
