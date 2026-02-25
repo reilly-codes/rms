@@ -61,6 +61,8 @@ async def get_all_landlord_units(session: SessionDep, current_user: Annotated[Us
     units = session.exec(statement).all()
     return units
 
-    
+@app.get("/alive")
+async def stay_alive():
+    return {"status" : "alive"}
 
 # handle tenant wallet balance
