@@ -13,11 +13,19 @@ from sqlmodel import (
 
 from app.models.role import Role
 
-load_dotenv()
+env_mode = os.getenv("ENVIRONMENT", "development")
+
+if env_mode == "production":
+    load_dotenv(".env.production")
+else:
+    load_dotenv(".env.development")
 
 connect_args = {"check_same_thread" : False}
 
 DATABASE_URL = os.getenv("DATABASE_URL")
+
+if not DATABASE_URL:
+    raise ValueError("🚨 DATABASE_URL is missing! Check your .env file.")
 engine = create_engine(DATABASE_URL, echo=True)
 
 def create_db_and_tables():
