@@ -46,7 +46,7 @@ async def get_all_invoices(
 
     return invoices
 
-@router.get("/{invoice_id}", response_model=Invoice)
+@router.get("/rent/{invoice_id}", response_model=Invoice)
 async def show_single_invoice(
     session: SessionDep,
     invoice_id: UUID
