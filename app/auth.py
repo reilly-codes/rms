@@ -23,7 +23,7 @@ ALGORITHM="HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES=30
 
 password_hash = PasswordHash.recommended()
-oauth2_scheme =  OAuth2PasswordBearer(tokenUrl="token")
+oauth2_scheme =  OAuth2PasswordBearer(tokenUrl="/api/token/")
 
 def verify_password(plain_txt_password, hashed_password):
     return password_hash.verify(plain_txt_password, hashed_password)
