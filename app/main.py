@@ -26,6 +26,8 @@ app = FastAPI(lifespan=lifespan)
 
 origins = [
     "http://142.93.101.12",
+    "https://oduorys.co.ke",
+    "https://rms.oduorys.co.ke",
     "https://rentmgt.netlify.app",
     "https://rms-ii8e.onrender.com"
 ]
