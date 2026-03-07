@@ -56,6 +56,11 @@ async def create_payment(
     payment = new_payment.model_dump()
     payment["created_by"] = current_user.id
     
+    if payment["tenant_id"]=="" and payment["invoice_id"] != "":
+        qry = select(Invoice).where(Invoice.id == payment["invoice_id"])
+        invoice = session.exec(qry).first()
+        payment["tenant_id"] = invoice.tenant_id
+         
     db_payment = Payment(**payment)
     
     session.add(db_payment)

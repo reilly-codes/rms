@@ -1,3 +1,6 @@
+import os
+
+from dotenv import load_dotenv
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Annotated, List
@@ -22,15 +25,14 @@ from app.routers import (
 )
 from app.routers.users import active_user
 
+load_dotenv()
+
 app = FastAPI(lifespan=lifespan)
 
-origins = [
-    "http://142.93.101.12",
-    "https://oduorys.co.ke",
-    "https://rms.oduorys.co.ke",
-    "https://rentmgt.netlify.app",
-    "https://rms-ii8e.onrender.com"
-]
+origin_strings = os.getenv("ALLOWED_FRONTENDS", "http://142.93.101.12")
+ALLOWED_ORIGINS_LIST = origin_strings.split(",")
+
+origins = ALLOWED_ORIGINS_LIST
 
 app.add_middleware(
     CORSMiddleware,
