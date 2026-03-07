@@ -29,7 +29,7 @@ load_dotenv()
 
 app = FastAPI(lifespan=lifespan)
 
-origin_strings = os.getenv("ALLOWED_FRONTENDS", "http://localhost:8080/")
+origin_strings = os.getenv("ALLOWED_FRONTENDS", "http://142.93.101.12")
 ALLOWED_ORIGINS_LIST = origin_strings.split(",")
 
 origins = ALLOWED_ORIGINS_LIST
@@ -63,6 +63,8 @@ async def get_all_landlord_units(session: SessionDep, current_user: Annotated[Us
     units = session.exec(statement).all()
     return units
 
-    
+@app.get("/alive")
+async def stay_alive():
+    return {"status" : "alive"}
 
 # handle tenant wallet balance
