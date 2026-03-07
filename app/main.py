@@ -27,7 +27,11 @@ from app.routers.users import active_user
 
 load_dotenv()
 
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(
+    lifespan=lifespan,
+    root_path="/api",
+    servers=[{"url": "https://rms.oduorys.co.ke/api", "description": "Production"}]
+)
 
 origin_strings = os.getenv("ALLOWED_FRONTENDS", "http://142.93.101.12")
 ALLOWED_ORIGINS_LIST = origin_strings.split(",")

@@ -75,7 +75,7 @@ async def request_reset_password_link(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User could not be found")
     
     # send email logic
-    origin_strings = os.getenv("ALLOWED_FRONTENDS", "http://localhost:8080/")
+    origin_strings = os.getenv("ALLOWED_FRONTENDS", "http://localhost:8080/", "https://rms.oduorys.co.ke")
     ALLOWED_ORIGINS_LIST = origin_strings.split(",")
     try:
         reset_token = create_reset_password_token(user)
