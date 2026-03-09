@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException
+import pandas as pd
+
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlmodel import select
 from sqlalchemy.orm import selectinload
 from typing import List, Annotated
@@ -206,3 +208,36 @@ async def edit_specific_maintenance_bill(
     session.refresh(mb)
     
     return mb
+
+@router.post("/old/upload")
+async def bulk_upload_old_rent_invoices(
+    session: SessionDep,
+    file: UploadFile = File(...)
+):
+    if not file.filename.endswith(('.csv', '.xlsx', '.xls')):
+        raise HTTPException(status_code=400, detail="Invalid File format. Please upload CSV or Excel")
+    
+    try:
+        if file.filename.endswith('.csv'):
+            df = pd.read_csv(file.file)
+        else:
+            df = pd.read_excel(file.file)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Could not read file: {str(e)}")
+    
+    required_cols = ["property_name", "hse_number", "rent_amount", "utility_water_bill", "utility_electricity_bill", "utility_other_bill", "month"]
+    if not all(col in df.columns for col in required_cols):
+        raise HTTPException(status_code=400, detail=f"Missing required columns. Found: {df.columns}")
+    
+    try:
+        new_invoices = []
+        for index, row in df.iterrows():
+            hse_qry = select(House).join(Property, Property.name == str(row["property_name"])).where(House.number == str(row["hse_number"]))
+            hse = session.exec(hse_qry).first()
+            invoice = Invoice()
+    
+        return { "message" : f"{len(new_invoices)} Invoices successfully created" }
+    
+    except Exception as e:
+        session.rollback()
+        raise HTTPException(status_code=500, detail=f"Error processing row {index}: {str(e)}")
