@@ -205,7 +205,7 @@ async def edit_specific_maintenance_bill(
     
     return mb
 
-@router.post("/old/upload")
+@router.post("/rent/bulk/upload")
 async def bulk_upload_old_rent_invoices(
     session: SessionDep,
     current_user: Annotated[User, Depends(active_user)],
@@ -232,7 +232,7 @@ async def bulk_upload_old_rent_invoices(
             .where(House.property_id == property_id)
         )
         units = session.exec(houses_statement).all()
-        units_dict = {unit.unit_number: unit for unit in units}
+        units_dict = {unit.number : unit for unit in units}
         tenants_statement = (
             select(Tenant).join(TenantUnit).join(House, House.property_id == property_id)
         )
@@ -245,10 +245,19 @@ async def bulk_upload_old_rent_invoices(
         tenant_units_dict = {(tu.hse_id, tu.tenant_id): tu for tu in tenant_units}
         
         for sheet_month_name, month_df in df.items():
-            required_cols = ["hse_number", "tenant_name", "rent_amount", "water_bill", "electricity_bill", "other_utility_bill"]
+            required_cols = ["hse_number", "tenant_name", "contact_info", "water_bill", "electricity_bill", "other_utility_bill"]
             if not all(col in month_df.columns for col in required_cols):
-                raise HTTPException(status_code=400, detail=f"Missing required columns. Found: {df.columns}")
+                missing_cols = [col for col in required_cols if col not in month_df.columns]
+                    
+                    # Fix the f-string to use month_df (the actual dataframe)
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"Missing required columns: {missing_cols}. Columns found in sheet: {list(month_df.columns)}"
+                )
         
+            month_df["water_bill"] = pd.to_numeric(month_df["water_bill"], errors="coerce").fillna(0)
+            month_df["electricity_bill"] = pd.to_numeric(month_df["electricity_bill"], errors="coerce").fillna(0)
+            month_df["other_utility_bill"] = pd.to_numeric(month_df["other_utility_bill"], errors="coerce").fillna(0)
                 
             for index, row in month_df.iterrows(): 
                 # tenant _unit exists
@@ -264,12 +273,12 @@ async def bulk_upload_old_rent_invoices(
                     
                 month_number = datetime.strptime(sheet_month_name.lower(), "%b").month                
                 date_of_gen = datetime(2026, month_number, 2)
-                utilities_total: float = float(row["water_bill"]) + float(row["electricity_bill"]) 
+                utilities_total: float = float(row["water_bill"]) + float(row["electricity_bill"]) + float(row["other_utility_bill"])
                 if tu in tenant_units_dict:
                     invoice_dict = {
                         "tenant_unit_id" : tu.id,
                         "rent_amount" : hse.rent,
-                        "amount": utilities_total,
+                        "amount": hse.rent + utilities_total,
                         "date_of_gen" : date_of_gen,
                         "date_due" : date_of_gen + timedelta(days=7)
                     }
@@ -305,9 +314,9 @@ async def bulk_upload_old_rent_invoices(
                     if not tenant:
                         tenant = Tenant(
                             name=str(row["tenant_name"]),
-                            email="",
+                            email=f"{str(row['tenant_name'])}@filler.rms",
                             tel=str(row["contact_info"]),
-                            national_id="",
+                            national_id=None,
                             status=TenantStatus.VACATED
                         )
                         
@@ -319,14 +328,14 @@ async def bulk_upload_old_rent_invoices(
                     new_tenant_unit = TenantUnit(
                         tenant_id=tenant.id,
                         hse_id=hse.id,
-                        rent_begin=datetime(2026, sheet_month_name, 1),
+                        rent_begin=datetime(2026, month_number, 1),
                     )
                     session.add(new_tenant_unit)
                     session.flush()
                     invoice_dict = {
                         "tenant_unit_id" : new_tenant_unit.id,
                         "rent_amount" : hse.rent,
-                        "amount": utilities_total,
+                        "amount": hse.rent + utilities_total,
                         "date_of_gen" : date_of_gen,
                         "date_due" : date_of_gen + timedelta(days=7)
                     }
@@ -360,7 +369,7 @@ async def bulk_upload_old_rent_invoices(
                     
         session.commit() 
         
-        return { "message" : f"{len(new_invoices)} Invoices successfully created" }
+        return { "message" : "Invoices successfully created", "count": len(new_invoices) }
     
     except Exception as e:
         session.rollback()

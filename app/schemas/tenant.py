@@ -13,7 +13,7 @@ class TenantStatus(str, Enum):
     VACATED = "VACATED"
 
 class TenantBase(UserBase):
-    national_id: str = Field(unique=True, index=True)
+    national_id: str | None = Field(unique=True, index=True, nullable=True)
     status: TenantStatus = Field(default=TenantStatus.ACTIVE, index=True)
     
 class TenantRead(TenantBase):

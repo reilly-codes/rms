@@ -62,8 +62,7 @@ async def get_all_payments(
     # FIX 1: Use strict Inner Joins and explicitly state the foreign keys
     statement = (
         select(Payment)
-        .join(Invoice, Payment.invoice_id == Invoice.id)
-        .join(TenantUnit, Invoice.tenant_unit_id == TenantUnit.id)
+        .join(TenantUnit, Payment.tenant_id == TenantUnit.tenant_id)
         .join(House, TenantUnit.hse_id == House.id)
         .join(Property, House.property_id == Property.id)
     )
