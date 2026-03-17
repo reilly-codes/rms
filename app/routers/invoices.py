@@ -2,6 +2,7 @@ import pandas as pd
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlmodel import select
+from sqlalchemy import and_
 from sqlalchemy.orm import selectinload
 from typing import List, Annotated
 from uuid import UUID
@@ -10,12 +11,15 @@ from datetime import datetime, timedelta
 from app.db import SessionDep
 from app.models.tenant import Tenant
 from app.models.house import House
+from app.models.tenant_unit import TenantUnit
 from app.models.property import Property
 from app.models.user import User
 from app.models.invoice import Invoice
 from app.models.maintenance_bill import MaintenanceBill
 from app.models.utility import UtilityBill
 from app.schemas.invoice import InvoiceGenerationRequest, InvoiceRead
+from app.schemas.utility import BillType
+from app.schemas.tenant import TenantStatus
 from app.schemas.maintenance_bill import MaintenanceBillBase, MaintenanceBillRead, MaintenanceBillUpdate
 from app.routers.users import active_user
 from app.routers.properties import get_individual_property
@@ -34,15 +38,15 @@ async def get_all_invoices(
     hse_id: UUID | None = None,
     tenant_id: UUID | None = None
 ):
-    statement = select(Invoice).join(House, House.id == Invoice.hse_id).join(Property, Property.id == House.property_id).where(Property.landlord_id == current_user.id)
+    statement = select(Invoice).join(TenantUnit, Invoice.tenant_unit_id == TenantUnit.id).join(House, House.id == TenantUnit.hse_id).join(Property, Property.id == House.property_id).where(Property.landlord_id == current_user.id)
     
     if hse_id:
-        statement = statement.where(Invoice.hse_id == hse_id)
+        statement = statement.where(Invoice.tenant_unit.hse_id == hse_id)
         
     if tenant_id:
-        statement = statement.where(Invoice.tenant_id == tenant_id)
+        statement = statement.where(Invoice.tenant_unit.tenant_id == tenant_id)
 
-    statement = statement.options(selectinload(Invoice.house), selectinload(Invoice.utilities), selectinload(Invoice.tenant))
+    statement = statement.options(selectinload(Invoice.tenant_unit).selectinload(TenantUnit.house), selectinload(Invoice.tenant_unit).selectinload(TenantUnit.tenant), selectinload(Invoice.utilities))
 
     invoices = session.exec(statement).all()
 
@@ -53,7 +57,7 @@ async def show_single_invoice(
     session: SessionDep,
     invoice_id: UUID
 ):
-    statement = select(Invoice).where(Invoice.id == invoice_id).options(selectinload(Invoice.house), selectinload(Invoice.utilities), selectinload(Invoice.tenant))
+    statement = select(Invoice).where(Invoice.id == invoice_id).options(selectinload(Invoice.tenant_unit).selectinload(TenantUnit.house), selectinload(Invoice.tenant_unit).selectinload(TenantUnit.tenant), selectinload(Invoice.utilities))
 
     invoice = session.exec(statement).first()
 
@@ -80,16 +84,17 @@ async def generate_tenant_rent_invoices(
     base_rent: float = house.rent
     utilities_total: float = sum(u.amount for u in utility_list.utilities) 
     bal: float = 0
+    
+    tenant_unit = session.exec(select(TenantUnit).where(TenantUnit.hse_id == house.id)).first()
 
-    tenant_statement = select(Tenant).where(Tenant.hse == house.id)
+    tenant_statement = select(Tenant).join(TenantUnit, TenantUnit.hse_id == house.id and TenantUnit.rent_end == None).where(tenant_unit.tenant_id == Tenant.id)
     tenant = session.exec(tenant_statement).first()
     
     if tenant.wallet_balance > 0.0:
         bal = tenant.wallet_balance        
 
     invoice = Invoice(
-        tenant_id=tenant.id,
-        hse_id=house.id,
+        tenant_unit_id=tenant_unit.id,
         rent_amount=house.rent,
         amount=(base_rent+utilities_total)- bal,
         date_due=datetime.now()+timedelta(days=7),
@@ -150,15 +155,11 @@ async def get_all_maintenance_bills(
     session: SessionDep,
     current_user: Annotated[User, Depends(active_user)],
     hse_id: UUID | None = None,
-    # tenant_id: UUID | None = None
 ):
     statement = select(MaintenanceBill).join(House).join(Property).where(Property.landlord_id == current_user.id)
     
     if hse_id:
         statement = statement.where(MaintenanceBill.hse_id == hse_id)
-        
-    # if tenant_id:
-    #     statement = statement.where(MaintenanceBill.tenant_id == tenant_id)
         
     statement = statement.options(selectinload(MaintenanceBill.house))
     
@@ -172,11 +173,6 @@ async def generate_tenant_maintenance_bill(
     new_bill: MaintenanceBillBase
 ):
     bill = new_bill.model_dump()
-    # qry = select(Tenant).where(Tenant.hse == bill["hse_id"])
-    # tenant = session.exec(qry).first()
-    # if tenant:
-    #     bill["tenant_id"] = tenant.id
-    # print(bill)
     bill["total_amount"] = bill["labor_cost"] + bill["parts_cost"]
     db_bill = MaintenanceBill(**bill)
     session.add(db_bill)
@@ -212,6 +208,8 @@ async def edit_specific_maintenance_bill(
 @router.post("/old/upload")
 async def bulk_upload_old_rent_invoices(
     session: SessionDep,
+    current_user: Annotated[User, Depends(active_user)],
+    property_id: UUID,
     file: UploadFile = File(...)
 ):
     if not file.filename.endswith(('.csv', '.xlsx', '.xls')):
@@ -220,22 +218,148 @@ async def bulk_upload_old_rent_invoices(
     try:
         if file.filename.endswith('.csv'):
             df = pd.read_csv(file.file)
+            df = {"CSV_Data" : df}
         else:
-            df = pd.read_excel(file.file)
+            df = pd.read_excel(file.file, sheet_name=None)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Could not read file: {str(e)}")
     
-    required_cols = ["property_name", "hse_number", "rent_amount", "utility_water_bill", "utility_electricity_bill", "utility_other_bill", "month"]
-    if not all(col in df.columns for col in required_cols):
-        raise HTTPException(status_code=400, detail=f"Missing required columns. Found: {df.columns}")
-    
     try:
         new_invoices = []
-        for index, row in df.iterrows():
-            hse_qry = select(House).join(Property, Property.name == str(row["property_name"])).where(House.number == str(row["hse_number"]))
-            hse = session.exec(hse_qry).first()
-            invoice = Invoice()
-    
+        
+        houses_statement = (
+            select(House)
+            .where(House.property_id == property_id)
+        )
+        units = session.exec(houses_statement).all()
+        units_dict = {unit.unit_number: unit for unit in units}
+        tenants_statement = (
+            select(Tenant).join(TenantUnit).join(House, House.property_id == property_id)
+        )
+        tenants = session.exec(tenants_statement).all()
+        tenants_dict = {tenant.name: tenant for tenant in tenants}
+        
+        tenant_units = session.exec(
+            select(TenantUnit).join(House, House.property_id == property_id)
+        ).all()
+        tenant_units_dict = {(tu.hse_id, tu.tenant_id): tu for tu in tenant_units}
+        
+        for sheet_month_name, month_df in df.items():
+            required_cols = ["hse_number", "tenant_name", "rent_amount", "water_bill", "electricity_bill", "other_utility_bill"]
+            if not all(col in month_df.columns for col in required_cols):
+                raise HTTPException(status_code=400, detail=f"Missing required columns. Found: {df.columns}")
+        
+                
+            for index, row in month_df.iterrows(): 
+                # tenant _unit exists
+                hse = units_dict.get(str(row["hse_number"]))
+                if not hse:
+                    raise Exception("House not found in DB!")
+                
+                tenant = tenants_dict.get(str(row["tenant_name"]))
+                
+                tu = None
+                if tenant:
+                    tu = tenant_units_dict.get((hse.id, tenant.id))
+                    
+                month_number = datetime.strptime(sheet_month_name.lower(), "%b").month                
+                date_of_gen = datetime(2026, month_number, 2)
+                utilities_total: float = float(row["water_bill"]) + float(row["electricity_bill"]) 
+                if tu in tenant_units_dict:
+                    invoice_dict = {
+                        "tenant_unit_id" : tu.id,
+                        "rent_amount" : hse.rent,
+                        "amount": utilities_total,
+                        "date_of_gen" : date_of_gen,
+                        "date_due" : date_of_gen + timedelta(days=7)
+                    }
+                    invoice_to_save = Invoice(**invoice_dict)
+                    session.add(invoice_to_save)
+                    session.flush()
+                    
+                    water_utility_bill = UtilityBill(
+                        bill_type=BillType.WATER,
+                        amount=float(row["water_bill"]),
+                        invoice_id=invoice_to_save.id
+                    )
+                    
+                    electricity_utility_bill = UtilityBill(
+                        bill_type=BillType.ELECTRICITY,
+                        amount=float(row["electricity_bill"]),
+                        invoice_id=invoice_to_save.id
+                    )
+                    
+                    other_utility_bill = UtilityBill(
+                        bill_type=BillType.OTHER,
+                        amount=float(row["other_utility_bill"]),
+                        invoice_id=invoice_to_save.id
+                    )
+                    
+                    session.add(water_utility_bill)
+                    session.add(electricity_utility_bill)
+                    session.add(other_utility_bill)
+                    
+                    new_invoices.append(invoice_to_save)
+                # tenant_unit is changed
+                elif tu not in tenant_units_dict:
+                    if not tenant:
+                        tenant = Tenant(
+                            name=str(row["tenant_name"]),
+                            email="",
+                            tel=str(row["contact_info"]),
+                            national_id="",
+                            status=TenantStatus.VACATED
+                        )
+                        
+                        session.add(tenant)
+                        session.flush()
+                        
+                        tenants_dict[tenant.name] = tenant
+                        
+                    new_tenant_unit = TenantUnit(
+                        tenant_id=tenant.id,
+                        hse_id=hse.id,
+                        rent_begin=datetime(2026, sheet_month_name, 1),
+                    )
+                    session.add(new_tenant_unit)
+                    session.flush()
+                    invoice_dict = {
+                        "tenant_unit_id" : new_tenant_unit.id,
+                        "rent_amount" : hse.rent,
+                        "amount": utilities_total,
+                        "date_of_gen" : date_of_gen,
+                        "date_due" : date_of_gen + timedelta(days=7)
+                    }
+                    invoice_to_save = Invoice(**invoice_dict)
+                    session.add(invoice_to_save)
+                    session.flush()
+                    
+                    water_utility_bill = UtilityBill(
+                        bill_type=BillType.WATER,
+                        amount=float(row["water_bill"]),
+                        invoice_id=invoice_to_save.id
+                    )
+                    
+                    electricity_utility_bill = UtilityBill(
+                        bill_type=BillType.ELECTRICITY,
+                        amount=float(row["electricity_bill"]),
+                        invoice_id=invoice_to_save.id
+                    )
+                    
+                    other_utility_bill = UtilityBill(
+                        bill_type=BillType.OTHER,
+                        amount=float(row["other_utility_bill"]),
+                        invoice_id=invoice_to_save.id
+                    )
+                    
+                    session.add(water_utility_bill)
+                    session.add(electricity_utility_bill)
+                    session.add(other_utility_bill)
+                    
+                    new_invoices.append(invoice_to_save)
+                    
+        session.commit() 
+        
         return { "message" : f"{len(new_invoices)} Invoices successfully created" }
     
     except Exception as e:

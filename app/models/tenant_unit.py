@@ -15,6 +15,6 @@ class TenantUnit(TenantUnitBase, table=True):
     id: UUID = Field(default_factory=uuid4, primary_key=True, index=True)
     date_created: datetime = Field(default_factory=datetime.now)
     
-    house: "House" = Relationship(back_populates="houses")
-    tenant: "Tenant" = Relationship(back_populates="tenants")
+    house: "House" = Relationship(back_populates="tenants")
+    tenant: "Tenant" = Relationship(back_populates="houses")
     invoices: List["Invoice"] = Relationship(back_populates="tenant_unit")

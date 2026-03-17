@@ -7,6 +7,7 @@ from datetime import datetime
 from app.db import SessionDep
 from app.models.payment import Payment
 from app.models.house import House
+from app.models.tenant_unit import TenantUnit
 from app.models.property import Property
 from app.models.invoice import Invoice
 from app.models.user import User
@@ -18,6 +19,37 @@ router = APIRouter(
     dependencies=[Depends(active_user)]
 )
 
+# @router.get("/payments/all", response_model=List[Payment])
+# async def get_all_payments(
+#     session: SessionDep,
+#     current_user: Annotated[User, Depends(active_user)],
+#     hse_id: UUID | None = None,
+#     tenant_id: UUID | None = None,
+#     date_from: datetime | None = None,
+#     date_to: datetime | None = None
+# ):
+#     statement = select(Payment).join(Invoice, isouter=True).join(TenantUnit, Invoice.tenant_unit_id == TenantUnit.id, isouter=True)
+    
+#     if hse_id:
+#         statement = statement.where(TenantUnit.hse_id == hse_id)
+        
+#     if tenant_id:
+#         statement = statement.where(TenantUnit.tenant_id == tenant_id) 
+        
+#     statement = statement.join(House, (House.id == TenantUnit.hse_id) , isouter=True)
+#     statement = statement.join(Property, Property.id == House.property_id, isouter=True)
+#     statement = statement.where(Property.landlord_id == current_user.id)
+    
+#     if date_from:
+#         statement = statement.where(Payment.created_at >= date_from)
+
+#     if date_to:
+#         statement = statement.where(Payment.created_at <= date_to)
+    
+#     payments = session.exec(statement).unique().all()
+    
+#     return payments
+
 @router.get("/payments/all", response_model=List[Payment])
 async def get_all_payments(
     session: SessionDep,
@@ -27,21 +59,30 @@ async def get_all_payments(
     date_from: datetime | None = None,
     date_to: datetime | None = None
 ):
-    statement = select(Payment).join(Invoice, isouter=True)
+    # FIX 1: Use strict Inner Joins and explicitly state the foreign keys
+    statement = (
+        select(Payment)
+        .join(Invoice, Payment.invoice_id == Invoice.id)
+        .join(TenantUnit, Invoice.tenant_unit_id == TenantUnit.id)
+        .join(House, TenantUnit.hse_id == House.id)
+        .join(Property, House.property_id == Property.id)
+    )
     
+    # FIX 2: Security check - only return payments for this landlord's properties
+    statement = statement.where(Property.landlord_id == current_user.id)
+    
+    # Optional Filters
     if hse_id:
-        statement = statement.where(
-            (Invoice.hse_id == hse_id)
-        )
+        statement = statement.where(TenantUnit.hse_id == hse_id)
         
     if tenant_id:
-        statement = statement.where(
-            (Invoice.tenant_id == tenant_id) 
-        )
-        
-    statement = statement.join(House, (House.id == Invoice.hse_id) , isouter=True)
-    statement = statement.join(Property, Property.id == House.property_id, isouter=True)
-    statement = statement.where(Property.landlord_id == current_user.id)
+        statement = statement.where(TenantUnit.tenant_id == tenant_id) 
+    
+    if date_from:
+        statement = statement.where(Payment.created_at >= date_from)
+
+    if date_to:
+        statement = statement.where(Payment.created_at <= date_to)
     
     payments = session.exec(statement).unique().all()
     
