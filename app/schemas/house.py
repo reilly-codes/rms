@@ -1,5 +1,9 @@
 from sqlmodel import SQLModel, Field
 from enum import Enum
+from uuid import UUID
+from typing import List
+
+from app.schemas.tenant_unit import TenantUnitRead
 
 class HouseStatus(str, Enum):
     VACANT = "VACANT"
@@ -12,3 +16,7 @@ class HouseBase(SQLModel):
     deposit: float
     description: str
     status: HouseStatus = Field(default=HouseStatus.VACANT, index=True)
+    
+class HouseRead(HouseBase):
+    id: UUID
+    tenants: List[TenantUnitRead] = []

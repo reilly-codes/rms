@@ -18,6 +18,7 @@ from app.models.user import User
 from app.models.property import Property
 from app.models.house import House
 from app.models.tenant import Tenant
+from app.models.tenant_unit import TenantUnit
 from app.models.invoice import Invoice
 from app.models.transaction import Transaction
 from app.models.payment import Payment
