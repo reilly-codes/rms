@@ -13,5 +13,5 @@ class Invoice(InvoiceBase, table=True):
     comments: str | None
 
     payments: List["Payment"] = Relationship(back_populates="invoice")
-    utilities: List["UtilityBill"] = Relationship(back_populates="invoice")
+    utilities: List["UtilityBill"] = Relationship(back_populates="invoice", cascade_delete=True)
     tenant_unit: "TenantUnit" = Relationship(back_populates="invoices")

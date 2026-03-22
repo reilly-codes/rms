@@ -8,9 +8,8 @@ if TYPE_CHECKING:
 
 class UtilityBill(UtilityBillBase, table=True):
     id: UUID | None = Field(default_factory=uuid4, primary_key=True)
-    invoice_id: UUID = Field(foreign_key="invoice.id", index=True)
+    invoice_id: UUID = Field(foreign_key="invoice.id", index=True, ondelete='CASCADE')
 
     invoice: "Invoice" = Relationship(
         back_populates="utilities",
-        cascade_delete=True,
     )
