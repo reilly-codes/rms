@@ -83,9 +83,12 @@ async def create_tenant(
     # session.refresh(dbTenant)
     try:
         input_data = newTenant.model_dump()
+        tenant_email = input_data["email"]
+        if not tenant_email:
+            tenant_email = None
         db_tenant = Tenant(
             name=input_data["name"],
-            email=input_data["email"],
+            email=tenant_email,
             tel=input_data["tel"],
             national_id=input_data["national_id"]
         )

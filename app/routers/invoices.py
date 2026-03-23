@@ -312,9 +312,10 @@ async def bulk_upload_old_rent_invoices(
                 # tenant_unit is changed
                 elif tu not in tenant_units_dict:
                     if not tenant:
+                        # tenant_email = str(row["tenant_email"])
                         tenant = Tenant(
                             name=str(row["tenant_name"]),
-                            email=f"{str(row['tenant_name'])}@filler.rms",
+                            email=None,
                             tel=str(row["contact_info"]),
                             national_id=None,
                             status=TenantStatus.VACATED
