@@ -274,7 +274,7 @@ async def bulk_upload_old_rent_invoices(
                 month_number = datetime.strptime(sheet_month_name.lower(), "%b").month                
                 date_of_gen = datetime(2026, month_number, 2)
                 utilities_total: float = float(row["water_bill"]) + float(row["electricity_bill"]) + float(row["other_utility_bill"])
-                if tu in tenant_units_dict:
+                if tu:
                     invoice_dict = {
                         "tenant_unit_id" : tu.id,
                         "rent_amount" : hse.rent,
@@ -367,6 +367,7 @@ async def bulk_upload_old_rent_invoices(
                     session.add(other_utility_bill)
                     
                     new_invoices.append(invoice_to_save)
+                    tenant_units_dict[(hse.id, tenant.id)] = new_tenant_unit
                     
         session.commit() 
         
