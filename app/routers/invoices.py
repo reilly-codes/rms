@@ -17,7 +17,7 @@ from app.models.user import User
 from app.models.invoice import Invoice
 from app.models.maintenance_bill import MaintenanceBill
 from app.models.utility import UtilityBill
-from app.schemas.invoice import InvoiceGenerationRequest, InvoiceRead
+from app.schemas.invoice import InvoiceGenerationRequest, InvoiceRead, InvoiceStatus
 from app.schemas.utility import BillType
 from app.schemas.tenant import TenantStatus
 from app.schemas.maintenance_bill import MaintenanceBillBase, MaintenanceBillRead, MaintenanceBillUpdate
@@ -279,11 +279,11 @@ async def bulk_upload_old_rent_invoices(
                         "tenant_unit_id" : tu.id,
                         "rent_amount" : hse.rent,
                         "amount": hse.rent + utilities_total,
-                        "status": "PAID",
                         "date_of_gen" : date_of_gen,
                         "date_due" : date_of_gen + timedelta(days=7)
                     }
                     invoice_to_save = Invoice(**invoice_dict)
+                    invoice_to_save.status = InvoiceStatus.PAID
                     session.add(invoice_to_save)
                     session.flush()
                     
@@ -338,11 +338,11 @@ async def bulk_upload_old_rent_invoices(
                         "tenant_unit_id" : new_tenant_unit.id,
                         "rent_amount" : hse.rent,
                         "amount": hse.rent + utilities_total,
-                        "status": "PAID",
                         "date_of_gen" : date_of_gen,
                         "date_due" : date_of_gen + timedelta(days=7)
                     }
                     invoice_to_save = Invoice(**invoice_dict)
+                    invoice_to_save.status = InvoiceStatus.PAID
                     session.add(invoice_to_save)
                     session.flush()
                     
