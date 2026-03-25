@@ -279,6 +279,7 @@ async def bulk_upload_old_rent_invoices(
                         "tenant_unit_id" : tu.id,
                         "rent_amount" : hse.rent,
                         "amount": hse.rent + utilities_total,
+                        "status": "PAID",
                         "date_of_gen" : date_of_gen,
                         "date_due" : date_of_gen + timedelta(days=7)
                     }
@@ -337,6 +338,7 @@ async def bulk_upload_old_rent_invoices(
                         "tenant_unit_id" : new_tenant_unit.id,
                         "rent_amount" : hse.rent,
                         "amount": hse.rent + utilities_total,
+                        "status": "PAID",
                         "date_of_gen" : date_of_gen,
                         "date_due" : date_of_gen + timedelta(days=7)
                     }
