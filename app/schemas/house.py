@@ -11,7 +11,7 @@ class HouseStatus(str, Enum):
     MAINTENANCE = "MAINTENANCE"
 
 class HouseBase(SQLModel):
-    number: str = Field(unique=True, index=True)
+    number: str = Field(index=True)
     rent: float
     deposit: float
     description: str
