@@ -13,5 +13,6 @@ class User(UserBase, table=True):
     hashed_password: str
     disabled: bool = False
     created_at: datetime = Field(default_factory=datetime.now)
+    landlord_id: UUID | None = Field(foreign_key="user.id", default=None, index=True)
 
     properties: List["Property"] = Relationship(back_populates="landlord")

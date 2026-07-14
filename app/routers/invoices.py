@@ -41,10 +41,10 @@ async def get_all_invoices(
     statement = select(Invoice).join(TenantUnit, Invoice.tenant_unit_id == TenantUnit.id).join(House, House.id == TenantUnit.hse_id).join(Property, Property.id == House.property_id).where(Property.landlord_id == current_user.id)
     
     if hse_id:
-        statement = statement.where(Invoice.tenant_unit.hse_id == hse_id)
+        statement = statement.where(TenantUnit.hse_id == hse_id)
         
     if tenant_id:
-        statement = statement.where(Invoice.tenant_unit.tenant_id == tenant_id)
+        statement = statement.where(TenantUnit.tenant_id == tenant_id)
 
     statement = statement.options(selectinload(Invoice.tenant_unit).selectinload(TenantUnit.house), selectinload(Invoice.tenant_unit).selectinload(TenantUnit.tenant), selectinload(Invoice.utilities))
 
@@ -85,10 +85,17 @@ async def generate_tenant_rent_invoices(
     utilities_total: float = sum(u.amount for u in utility_list.utilities) 
     bal: float = 0
     
-    tenant_unit = session.exec(select(TenantUnit).where(TenantUnit.hse_id == house.id)).first()
+    tenant_unit = session.exec(
+        select(TenantUnit).where(TenantUnit.hse_id == house.id).where(TenantUnit.rent_end == None)
+    ).first()
 
-    tenant_statement = select(Tenant).join(TenantUnit, TenantUnit.hse_id == house.id and TenantUnit.rent_end == None).where(tenant_unit.tenant_id == Tenant.id)
-    tenant = session.exec(tenant_statement).first()
+    if not tenant_unit:
+        raise HTTPException(status_code=404, detail="No active tenant found for this unit")
+
+    tenant = session.get(Tenant, tenant_unit.tenant_id)
+
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
     
     if tenant.wallet_balance > 0.0:
         bal = tenant.wallet_balance        
@@ -123,13 +130,13 @@ async def edit_specific_rent_invoice(
     current_user: Annotated[User, Depends(active_user)],
     utility_list: InvoiceGenerationRequest
 ):
-    query = select(Invoice).where(Invoice.id == invoice_id).options(selectinload(Invoice.house), selectinload(Invoice.utilities), selectinload(Invoice.tenant))
+    query = select(Invoice).where(Invoice.id == invoice_id).options(selectinload(Invoice.utilities), selectinload(Invoice.tenant_unit).selectinload(TenantUnit.house), selectinload(Invoice.tenant_unit).selectinload(TenantUnit.tenant))
     invoice = session.exec(query).first()
     
     if not invoice:
         raise HTTPException(status_code=404, detail="Could not find specific invoice")
     
-    if current_user.role != 1:
+    if current_user.role_id != 1:
         raise HTTPException(status_code=403, detail="Unauthorized User")
     
     utilities_updates = {u.bill_type: u.amount for u in utility_list.utilities}

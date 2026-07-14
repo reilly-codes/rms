@@ -30,8 +30,9 @@ async def get_all_transactions(
         
     if date_from:
         query = query.where(Transaction.transaction_date >= date_from)
-    elif date_from and date_to:
-        query = query.where(Transaction.transaction_date >= date_from and Transaction.transaction_date <= date_to)
+
+    if date_to:
+        query = query.where(Transaction.transaction_date <= date_to)
         
     query = query.order_by(Transaction.transaction_date)
     

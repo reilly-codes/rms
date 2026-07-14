@@ -26,8 +26,9 @@ async def reconciliation(
     matched_count = 0
     
     for payment in payments:
-        if payment.transaction_ref.strip().upper() in txn_map:
-            matched_txn = txn_map[payment.transaction_ref]
+        ref_key = payment.transaction_ref.strip().upper()
+        if ref_key in txn_map:
+            matched_txn = txn_map[ref_key]
             payment.transaction_id = matched_txn.id
             payment.status = PaymentStatus.VERIFIIED
             matched_txn.transaction_status = TransactionStatus.MATCHED

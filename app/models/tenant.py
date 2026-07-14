@@ -12,5 +12,6 @@ class Tenant(TenantBase, table=True):
     id: UUID | None = Field(default_factory=uuid4, primary_key=True)
     created_at: datetime = Field(default_factory=datetime.now)
     wallet_balance: float = Field(default=0.0)
+    user_id: UUID | None = Field(foreign_key="user.id", default=None, unique=True, index=True)
 
     houses: List["TenantUnit"] = Relationship(back_populates="tenant")

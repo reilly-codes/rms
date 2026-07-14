@@ -31,3 +31,5 @@ class TenantPrint(TenantBase):
     
 class TenantCreate(TenantBase):
     hse: UUID
+    email: str
+    password: str

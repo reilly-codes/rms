@@ -14,48 +14,15 @@ from app.models.user import User
 from app.schemas.tenant import TenantBase, TenantCreate, TenantPrint
 from app.routers.users import active_user
 from app.routers.properties import get_individual_property
+from app.auth import get_password_hash
+from app.services.cascade_delete import delete_tenant_full_cascade
+from sqlalchemy.exc import IntegrityError
 
 router = APIRouter(
     prefix="/tenants",
     tags=["Tenants"],
     dependencies=[Depends(active_user)]
 )
-
-@router.get("/all", response_model=List[TenantPrint])
-async def get_all_tenants(
-    session: SessionDep,
-    current_user: Annotated[User, Depends(active_user)],
-    property_id: UUID | None = None
-):
-    # old db schema query
-    # statement = select(Tenant).join(House, Tenant.hse == House.id).join(Property, House.property_id == Property.id).where(Property.landlord_id == current_user.id)
-    
-    # new db schema query
-    statement = select(Tenant).join(TenantUnit).join(House, House.id == TenantUnit.hse_id).join(Property, Property.id == House.property_id).where(Property.landlord_id == current_user.id)
-    
-    if property_id:
-        statement = statement.where(House.property_id == property_id)
-        
-    statement = statement.options(selectinload(Tenant.houses).selectinload(TenantUnit.house))
-
-    tenants = session.exec(statement).all()
-
-    return tenants
-
-@router.get("/{tenant_id}", response_model=Tenant)
-async def get_single_tenant(
-    session: SessionDep,
-    current_user: Annotated[User, Depends(active_user)],
-    tenant_id: UUID
-):
-    statement = select(Tenant).join(TenantUnit, Tenant.hse == TenantUnit.hse_id).join(Property, House.property_id == Property.id).where(Property.landlord_id == current_user.id).where(Tenant.id == tenant_id)
-
-    tenant = session.exec(statement).first()
-    
-    if not tenant:
-        raise HTTPException(status_code=404, detail="Tenant not found")
-
-    return tenant
 
 @router.post("/create/properties/{property_id}", response_model=TenantPrint)
 async def create_tenant(
@@ -83,14 +50,24 @@ async def create_tenant(
     # session.refresh(dbTenant)
     try:
         input_data = newTenant.model_dump()
-        tenant_email = input_data["email"]
-        if not tenant_email:
-            tenant_email = None
+
+        tenant_user = User(
+            name=input_data["name"],
+            email=input_data["email"],
+            tel=input_data["tel"],
+            role_id=2,
+            landlord_id=property.landlord_id,
+            hashed_password=get_password_hash(input_data["password"]),
+        )
+        session.add(tenant_user)
+        session.flush()
+
         db_tenant = Tenant(
             name=input_data["name"],
-            email=tenant_email,
+            email=input_data["email"],
             tel=input_data["tel"],
-            national_id=input_data["national_id"]
+            national_id=input_data["national_id"],
+            user_id=tenant_user.id,
         )
         session.add(db_tenant)
         session.flush()
@@ -112,11 +89,96 @@ async def create_tenant(
         session.refresh(selected_hse)
         session.refresh(db_tenant)
         
+    except IntegrityError:
+        session.rollback()
+        raise HTTPException(status_code=400, detail="A tenant or account with this email already exists")
     except Exception as e:
         session.rollback()
         raise HTTPException(status_code=500, detail=(str(e)))
 
     return db_tenant
+
+
+@router.get("/all", response_model=List[TenantPrint])
+async def get_all_tenants(
+    session: SessionDep,
+    current_user: Annotated[User, Depends(active_user)],
+    property_id: UUID | None = None
+):
+    # old db schema query
+    # statement = select(Tenant).join(House, Tenant.hse == House.id).join(Property, House.property_id == Property.id).where(Property.landlord_id == current_user.id)
+    
+    # new db schema query
+    statement = select(Tenant).join(TenantUnit).join(House, House.id == TenantUnit.hse_id).join(Property, Property.id == House.property_id).where(Property.landlord_id == current_user.id)
+    
+    if property_id:
+        statement = statement.where(House.property_id == property_id)
+        
+    statement = statement.options(selectinload(Tenant.houses).selectinload(TenantUnit.house))
+
+    tenants = session.exec(statement).all()
+
+    return tenants
+
+@router.get("/me", response_model=dict)
+async def get_current_tenant(
+    session: SessionDep,
+    current_user: Annotated[User, Depends(active_user)],
+):
+    """Get the currently logged-in tenant's record with unit details."""
+    statement = select(Tenant).where(Tenant.user_id == current_user.id)
+    tenant = session.exec(statement).first()
+    
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant record not found")
+    
+    # Get the tenant's active unit and rent info
+    unit_statement = select(TenantUnit, House).join(House).where(
+        TenantUnit.tenant_id == tenant.id
+    ).where(
+        TenantUnit.rent_end == None  # Only active tenancy
+    )
+    unit_row = session.exec(unit_statement).first()
+    
+    unit_number = "N/A"
+    monthly_rent = None
+    if unit_row:
+        tenant_unit, house = unit_row
+        unit_number = house.number
+        monthly_rent = house.rent
+    
+    return {
+        "id": tenant.id,
+        "name": current_user.name,
+        "email": current_user.email,
+        "tel": current_user.tel,
+        "role_id": current_user.role_id,
+        "national_id": tenant.national_id,
+        "status": tenant.status,
+        "wallet_balance": tenant.wallet_balance,
+        "created_at": tenant.created_at,
+        "user_id": tenant.user_id,
+        "unit_number": unit_number,
+        "monthly_rent": monthly_rent,
+        "houses": [],
+    }   
+
+@router.get("/{tenant_id}", response_model=Tenant)
+async def get_single_tenant(
+    session: SessionDep,
+    current_user: Annotated[User, Depends(active_user)],
+    tenant_id: UUID
+):
+    statement = select(Tenant).join(TenantUnit, TenantUnit.tenant_id == Tenant.id).join(House, House.id == TenantUnit.hse_id).join(Property, Property.id == House.property_id).where(Property.landlord_id == current_user.id).where(Tenant.id == tenant_id)
+
+    tenant = session.exec(statement).first()
+    
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    return tenant
+
+
 
 # improve logic for move out notice and end tenant Unit
 @router.patch("/{tenant_id}/edit", response_model=TenantPrint)
@@ -129,6 +191,17 @@ async def edit_tenant_details(
 
     for key,value in tenantData.items():
         setattr(tenant, key, value)
+
+    # Keep the linked login account's identity fields in sync — the tenant's
+    # email specifically is also their login username, so letting it drift
+    # from the business record would silently break their portal access.
+    if tenant.user_id:
+        linked_user = session.get(User, tenant.user_id)
+        if linked_user:
+            for key in ("name", "email", "tel"):
+                if key in tenantData:
+                    setattr(linked_user, key, tenantData[key])
+            session.add(linked_user)
         
     if tenant.status == "VACATED":
         qry = select(TenantUnit).where(TenantUnit.tenant_id == tenant.id)
@@ -139,14 +212,38 @@ async def edit_tenant_details(
     elif tenant.status == "MOVING OUT":
         qry = select(TenantUnit).where(TenantUnit.tenant_id == tenant.id)
         tu = session.exec(qry).first()
-        tu.rent_end == datetime.now() + timedelta(days=30)
+        tu.rent_end = datetime.now() + timedelta(days=30)
         session.add(tu)
         
         
         
 
     session.add(tenant)
-    session.commit()
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        raise HTTPException(status_code=400, detail="Another account already uses this email")
     session.refresh(tenant)
 
     return tenant
+
+@router.delete("/{tenant_id}")
+async def delete_tenant(
+    session: SessionDep,
+    tenant: Annotated[Tenant, Depends(get_single_tenant)],
+):
+    # Vacate the house(s) this tenant occupied before removing them, so the
+    # unit becomes bookable again rather than being left stuck OCCUPIED with
+    # no tenant attached.
+    units = session.exec(select(TenantUnit).where(TenantUnit.tenant_id == tenant.id)).all()
+    for unit in units:
+        house = session.get(House, unit.hse_id)
+        if house:
+            house.status = "VACANT"
+            session.add(house)
+
+    delete_tenant_full_cascade(session, tenant)
+    session.commit()
+
+    return {"message": "Tenant and all associated records deleted successfully"}

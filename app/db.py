@@ -31,23 +31,38 @@ engine = create_engine(DATABASE_URL, echo=True)
 def create_db_and_tables():
     SQLModel.metadata.create_all(engine)
 
+# def seed_roles():
+#     with Session(engine) as session:
+#         existing_role = session.exec(select(Role)).first()
+
+#         if not existing_role:
+#             print("seeding roles...")
+#             landlord = Role(id=1, name="Landlord", description="Property owner and Admin")
+#             tenant = Role(id=2, name="Tenant", description="Rents a property unit")
+#             caretaker = Role(id=3, name="Caretaker", description="Manages a single property on behalf of a landlord")
+
+#             session.add(landlord)
+#             session.add(tenant)
+#             session.add(caretaker)
+#             session.commit()
+
+#             print("Roles successfully seeded")
+
+#         else:
+#             print("Roles already exist. Skipping seed")
+
 def seed_roles():
     with Session(engine) as session:
-        existing_role = session.exec(select(Role)).first()
-
-        if not existing_role:
-            print("seeding roles...")
-            landlord = Role(id=1, name="Landlord", description="Property owner and Admin")
-            tenant = Role(id=2, name="Tenant", description="Rents a property unit")
-
-            session.add(landlord)
-            session.add(tenant)
-            session.commit()
-
-            print("Roles successfully seeded")
-
-        else:
-            print("Roles already exist. Skipping seed")
+        roles = [
+            Role(id=1, name="Landlord", description="Property owner and Admin"),
+            Role(id=2, name="Tenant", description="Rents a property unit"),
+            Role(id=3, name="Caretaker", description="Manages a single property on behalf of a landlord"),
+        ]
+        for role in roles:
+            existing = session.get(Role, role.id)
+            if not existing:
+                session.add(role)
+        session.commit()            
 
 def get_session():
     with Session(engine) as session:

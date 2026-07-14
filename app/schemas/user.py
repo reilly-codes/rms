@@ -11,6 +11,18 @@ class UserBase(SQLModel):
 class UserCreate(UserBase):
     password: str
 
+class CaretakerCreate(SQLModel):
+    name: str
+    email: str
+    tel: str
+    password: str
+
+class CaretakerUpdate(SQLModel):
+    name: str | None = None
+    email: str | None = None
+    tel: str | None = None
+    password: str | None = None
+
 class LoginRequest(SQLModel):
     email: str
     password: str
@@ -18,6 +30,7 @@ class LoginRequest(SQLModel):
 class UserPublic(UserBase):
     id: UUID
     created_at: datetime
+    landlord_id: UUID | None = None
     
 class PasswordChange(SQLModel):
     current_password: str

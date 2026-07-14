@@ -2,5 +2,6 @@ venv/
 *.pyc
 .vscode/
 .env.*
+.env.development
 database.db
 

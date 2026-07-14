@@ -24,7 +24,7 @@ async def send_broadcast_to_user(
     session: SessionDep,
     broadcast_detail: BroadcastBase
 ):
-    bc = broadcast_detail.model_validate_json()
+    bc = broadcast_detail
     if not bc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Incomplete broadcast")
 
