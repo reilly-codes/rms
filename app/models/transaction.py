@@ -9,4 +9,7 @@ if TYPE_CHECKING:
 class Transaction(TransactionBase, table=True):
     id: UUID | None = Field(primary_key=True, default_factory=uuid4)
     
-    payments: List["Payment"] = Relationship(back_populates="transaction")
+    payments: List["Payment"] = Relationship(
+        back_populates="transaction",
+        sa_relationship_kwargs={"foreign_keys": "Payment.transaction_id"},
+    )

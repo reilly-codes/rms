@@ -37,3 +37,4 @@ def downgrade() -> None:
     op.drop_constraint('fk_user_landlord_id_user', 'user', type_='foreignkey')
     op.drop_index(op.f('ix_user_landlord_id'), table_name='user')
     op.drop_column('user', 'landlord_id')
+    

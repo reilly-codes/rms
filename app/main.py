@@ -1,50 +1,37 @@
+# app/main.py
 import os
-
 from dotenv import load_dotenv
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from typing import Annotated, List
-from sqlmodel import select
+from fastapi.staticfiles import StaticFiles
 
-from app.models.house import House
-from app.models.property import Property
-from app.models.user import User
-from app.db import SessionDep, lifespan
-from app.routers import (
-    tokens,
-    users,
-    properties,
-    houses,
-    tenants,
-    invoices,
-    transactions,
-    payments,
-    maintenance_bills,
-    broadcast,
-    reconciliation
-)
-from app.routers.users import active_user
+# Import core lifespans and configurations cleanly
+from app.core.database import lifespan
+from app.core.config import settings
+from app.api import api_router
 
+# 1. Environment and App Setup
 load_dotenv()
-
 env_mode = os.getenv("ENVIRONMENT", "development")
+
 app_kwargs = {
-    "lifespan": lifespan
+    "lifespan": lifespan,
+    "title": "Property Management System API",
+    "version": "1.0.0"
 }
+
+# Production adjustments
 if env_mode == "production":
     app_kwargs["root_path"] = "/api"
     app_kwargs["servers"] = [
         {"url": "https://rms.oduorys.co.ke/api", "description": "Production"}
     ]
 
-app = FastAPI(
-    **app_kwargs
-)
+app = FastAPI(**app_kwargs)
 
+# 2. Clean CORS Configuration
 origin_strings = os.getenv("ALLOWED_FRONTENDS", "http://142.93.101.12")
-ALLOWED_ORIGINS_LIST = origin_strings.split(",")
-
-origins = ALLOWED_ORIGINS_LIST
+origins = [origin.strip() for origin in origin_strings.split(",") if origin.strip()]
 
 app.add_middleware(
     CORSMiddleware,
@@ -54,29 +41,10 @@ app.add_middleware(
     allow_headers=["*"],     
 )
 
-app.include_router(tokens.router)
-app.include_router(users.router)
-app.include_router(properties.router)
-app.include_router(houses.router)
-app.include_router(tenants.router)
-app.include_router(invoices.router) 
-app.include_router(payments.router) 
-app.include_router(transactions.router)
-app.include_router(reconciliation.router)
-app.include_router(maintenance_bills.router)
-app.include_router(broadcast.router)  
-@app.get("/landlords/units/all", response_model=List[House])
-async def get_all_landlord_units(session: SessionDep, current_user: Annotated[User, Depends(active_user)]):
-    statement = (
-        select(House)
-        .join(Property, House.property_id == Property.id)
-        .where(Property.landlord_id == current_user.id)
-    )
-    units = session.exec(statement).all()
-    return units
+# 3. Mount all API Routes
+app.include_router(api_router)
 
-@app.get("/alive")
-async def stay_alive():
-    return {"status" : "alive"}
-
-# handle tenant wallet balance
+# 4. Serve uploaded receipt/expense photos (relative paths stored in DB,
+#    e.g. "expenses/ab12cd.jpg" -> served at /media/expenses/ab12cd.jpg)
+os.makedirs(settings.MEDIA_ROOT, exist_ok=True)
+app.mount(settings.MEDIA_URL_PREFIX, StaticFiles(directory=settings.MEDIA_ROOT), name="media")

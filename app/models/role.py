@@ -1,3 +1,5 @@
+# app/model/role.py
+
 from sqlmodel import SQLModel, Field
 
 class Role(SQLModel, table=True):

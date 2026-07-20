@@ -24,6 +24,25 @@ from app.models.maintenance_bill import MaintenanceBill
 from app.models.user import User
 
 
+def delete_account_cascade(session: Session, landlord_id) -> None:
+    """Deletes the Account + every Subscription row tied to a landlord, if
+    any exist. Safe to call even if the landlord never had one (e.g. very
+    old rows created before Accounts existed)."""
+    # Imported inline to avoid a circular import at module load time
+    from app.models.account import Account
+    from app.models.subscription import Subscription
+
+    account = session.exec(select(Account).where(Account.landlord_id == landlord_id)).first()
+    if not account:
+        return
+
+    subs = session.exec(select(Subscription).where(Subscription.account_id == account.id)).all()
+    for sub in subs:
+        session.delete(sub)
+
+    session.delete(account)
+
+
 def delete_tenant_unit_cascade(session: Session, tenant_unit: TenantUnit) -> None:
     """Deletes a single tenancy (unit assignment) and everything billed under it."""
     invoices = session.exec(
@@ -107,5 +126,7 @@ def delete_landlord_cascade(session: Session, landlord: User) -> None:
     ).all()
     for dependent in dependents:
         session.delete(dependent)
+
+    delete_account_cascade(session, landlord.id)
 
     session.delete(landlord)

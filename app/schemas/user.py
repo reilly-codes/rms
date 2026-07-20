@@ -23,6 +23,18 @@ class CaretakerUpdate(SQLModel):
     tel: str | None = None
     password: str | None = None
 
+class PropertyManagerCreate(SQLModel):
+    name: str
+    email: str
+    tel: str
+    password: str
+
+class PropertyManagerUpdate(SQLModel):
+    name: str | None = None
+    email: str | None = None
+    tel: str | None = None
+    password: str | None = None
+
 class LoginRequest(SQLModel):
     email: str
     password: str

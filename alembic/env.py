@@ -11,7 +11,7 @@ from sqlalchemy import pool
 from alembic import context
 
 from sqlmodel import SQLModel
-from app.db import  DATABASE_URL
+from app.core.database import  DATABASE_URL
 
 from app.models.role import Role
 from app.models.user import User

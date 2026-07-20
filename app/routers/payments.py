@@ -1,50 +1,66 @@
-from fastapi import APIRouter, Depends, HTTPException
+# app/routers/payments.py
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import select
 from typing import List, Annotated
 from uuid import UUID
 from datetime import datetime
 
-from app.db import SessionDep
+from app.core.database import SessionDep
+from app.core.roles import require_management, require_tenant
+from app.services.auth_service import get_current_active_user
+
 from app.models.payment import Payment
 from app.models.house import House
 from app.models.tenant_unit import TenantUnit
 from app.models.property import Property
 from app.models.invoice import Invoice
 from app.models.user import User
-from app.schemas.payment import PaymentBase
-from app.routers.users import active_user
+
+from app.schemas.payment import (
+    PaymentBase, 
+    PaymentEditSchema,
+    PaymentResponse,
+    LandlordDashboardSummary,
+    PropertyPaymentSummary
+)
+from app.services.payment_service import PaymentService
+from app.services.access_control import get_accessible_property_ids
 
 router = APIRouter(
+    prefix="/payments",
     tags=["Payments"],
-    dependencies=[Depends(active_user)]
+    dependencies=[Depends(get_current_active_user)]
 )
 
-@router.get("/me", response_model=list)
+
+@router.post("/process/payment", response_model=PaymentResponse)
+async def create_payment(
+    session: SessionDep,
+    current_user: Annotated[User, Depends(get_current_active_user)],
+    new_payment: PaymentBase
+):
+    """Register payment, logging explicit date paid, reference code, and breakdown allocation."""
+    return PaymentService.process_new_payment(session, new_payment, current_user.id)
+
+
+@router.get("/me", response_model=List[dict])
 async def get_tenant_payments(
     session: SessionDep,
-    current_user: Annotated[User, Depends(active_user)],
+    current_user: Annotated[User, Depends(require_tenant)],
 ):
-    """Get current tenant's invoice/payment history."""
+    """Retrieve current logged-in tenant's invoices along with detailed payment breakdowns."""
     from app.models.tenant import Tenant
-    from app.models.tenant_unit import TenantUnit
-    from app.models.invoice import Invoice
     
-    # Get tenant for this user
-    tenant_stmt = select(Tenant).where(Tenant.user_id == current_user.id)
-    tenant = session.exec(tenant_stmt).first()
-    
+    tenant = session.exec(select(Tenant).where(Tenant.user_id == current_user.id)).first()
     if not tenant:
-        raise HTTPException(status_code=404, detail="Tenant not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant profile not found")
     
-    # Get all invoices for this tenant's units
-    invoices_stmt = (
+    invoices = session.exec(
         select(Invoice)
         .join(TenantUnit, Invoice.tenant_unit_id == TenantUnit.id)
         .where(TenantUnit.tenant_id == tenant.id)
         .order_by(Invoice.date_due.desc())
-    )
-    
-    invoices = session.exec(invoices_stmt).all()
+    ).all()
     
     result = []
     for invoice in invoices:
@@ -64,8 +80,11 @@ async def get_tenant_payments(
             "status": invoice.status.value,
             "payments": [
                 {
+                    "id": str(p.id),
                     "amount": p.amount_paid,
-                    "date": p.created_at.isoformat(),
+                    "rent_allocated": p.rent_allocated,
+                    "utilities_allocated": p.utilities_allocated,
+                    "date": p.date_paid.isoformat(),
                     "ref": p.transaction_ref,
                     "status": p.status.value,
                 }
@@ -74,148 +93,101 @@ async def get_tenant_payments(
         })
     
     return result
-@router.get("/by-tenant", response_model=list)
-async def get_payments_by_tenant(
-    session: SessionDep,
-    current_user: Annotated[User, Depends(active_user)],
-    tenant_id: UUID | None = None,
-):
-    """Get tenant payments for landlord/caretaker."""
-    from app.models.property import Property
-    from app.models.house import House
-    from app.models.tenant_unit import TenantUnit
-    from app.models.invoice import Invoice
-    
-    # Build base statement
-    stmt = (
-        select(Invoice)
-        .join(TenantUnit, Invoice.tenant_unit_id == TenantUnit.id)
-        .join(House, TenantUnit.hse_id == House.id)
-        .join(Property, House.property_id == Property.id)
-        .order_by(Invoice.date_due.desc())
-    )
-    
-    # Security: filter by current user's properties
-    if current_user.role_id == 1:  # Landlord
-        stmt = stmt.where(Property.landlord_id == current_user.id)
-    elif current_user.role_id == 3:  # Caretaker
-        # TODO: Add caretaker-property assignment if not already there
-        pass
-    
-    # Optional tenant filter
-    if tenant_id:
-        stmt = stmt.where(TenantUnit.tenant_id == tenant_id)
-    
-    invoices = session.exec(stmt).all()
-    
-    result = []
-    for invoice in invoices:
-        total_paid = sum(p.amount_paid for p in invoice.payments)
-        balance = (invoice.rent_amount or 0) + (invoice.amount or 0) - total_paid
-        
-        result.append({
-            "id": str(invoice.id),
-            "tenant_id": str(invoice.tenant_unit.tenant_id),
-            "date_due": invoice.date_due.isoformat(),
-            "rent": invoice.rent_amount or 0,
-            "utilities": invoice.amount or 0,
-            "total_due": (invoice.rent_amount or 0) + (invoice.amount or 0),
-            "total_paid": total_paid,
-            "balance": balance,
-            "status": invoice.status.value,
-        })
-    
-    return result
 
-@router.post("/process/payment", response_model=Payment)
-async def create_payment(
-    session: SessionDep,
-    current_user: Annotated[User, Depends(active_user)],
-    new_payment: PaymentBase
-):
-    payment = new_payment.model_dump()
-    payment["created_by"] = current_user.id
-    
-    if payment.get("tenant_id") is None and payment.get("invoice_id"):
-        qry = select(Invoice).where(Invoice.id == payment["invoice_id"])
-        invoice = session.exec(qry).first()
-        if invoice:
-            tu = session.get(TenantUnit, invoice.tenant_unit_id)
-            if tu:
-                payment["tenant_id"] = tu.tenant_id
-         
-    db_payment = Payment(**payment)
-    
-    session.add(db_payment)
-    session.commit()
-    session.refresh(db_payment)
-    
-    return db_payment    
 
-@router.get("/payments/all", response_model=list)
-async def get_all_payments(
+@router.get("/summary", response_model=LandlordDashboardSummary)
+async def get_payments_dashboard_summary(
     session: SessionDep,
-    current_user: Annotated[User, Depends(active_user)],
-    hse_id: UUID | None = None,
-    tenant_id: UUID | None = None,
+    current_user: Annotated[User, Depends(require_management)],
     date_from: datetime | None = None,
     date_to: datetime | None = None
 ):
-    """Get all payments for landlord's/caretaker's tenants."""
-    from app.models.tenant import Tenant
+    """
+    Retrieve structured financial summaries broken down per property, 
+    including a grand total of all collections. Caretakers only see their assigned properties.
+    """
+    from app.core.roles import ROLE_MAP
+    user_role_name = ROLE_MAP.get(current_user.role_id, "")
     
-    statement = (
-        select(Payment)
-        .join(Tenant, Payment.tenant_id == Tenant.id)
-        .join(TenantUnit, Tenant.id == TenantUnit.tenant_id)
-        .join(House, TenantUnit.hse_id == House.id)
-        .join(Property, House.property_id == Property.id)
+    # 1. Fetch properties based on role assignment rules.
+    # BUGFIX: this used to filter on `Property.caretaker_id`, a column that
+    # never existed on the Property model — any caretaker hitting this
+    # endpoint would have gotten a hard DB error. Caretaker/Property
+    # Manager scoping is now driven by PropertyAssignment rows instead.
+    if user_role_name == "landlord":
+        prop_statement = select(Property).where(Property.landlord_id == current_user.id)
+        properties = session.exec(prop_statement).all()
+    elif user_role_name in ("caretaker", "propertymanager"):
+        accessible_ids = get_accessible_property_ids(session, current_user)
+        properties = session.exec(select(Property).where(Property.id.in_(accessible_ids))).all() if accessible_ids else []
+    else:
+        properties = []
+    
+    by_property_list = []
+    grand_total_rent = 0.0
+    grand_total_utilities = 0.0
+    grand_total_collected = 0.0
+    
+    # 2. Iterate properties to compute their respective payment allocations
+    for prop in properties:
+        # Fetch all payments belonging to this property's houses
+        payment_statement = (
+            select(Payment)
+            .join(TenantUnit, Payment.tenant_id == TenantUnit.tenant_id)
+            .join(House, TenantUnit.hse_id == House.id)
+            .where(House.property_id == prop.id)
+        )
+        
+        # Apply optional date filters based on transaction payment date
+        if date_from:
+            payment_statement = payment_statement.where(Payment.date_paid >= date_from)
+        if date_to:
+            payment_statement = payment_statement.where(Payment.date_paid <= date_to)
+            
+        payments = session.exec(payment_statement).unique().all()
+        
+        prop_rent = sum(p.rent_allocated for p in payments)
+        prop_utils = sum(p.utilities_allocated for p in payments)
+        prop_total = sum(p.amount_paid for p in payments)
+        
+        by_property_list.append(
+            PropertyPaymentSummary(
+                property_id=prop.id,
+                property_name=prop.name,
+                total_rent_collected=prop_rent,
+                total_utilities_collected=prop_utils,
+                total_collected=prop_total,
+                payments=payments
+            )
+        )
+        
+        # Accumulate overall aggregates
+        grand_total_rent += prop_rent
+        grand_total_utilities += prop_utils
+        grand_total_collected += prop_total
+
+    return LandlordDashboardSummary(
+        grand_total_rent=grand_total_rent,
+        grand_total_utilities=grand_total_utilities,
+        grand_total_collected=grand_total_collected,
+        by_property=by_property_list
     )
-    
-    # Security: only landlord's properties
-    if current_user.role_id == 1:  # Landlord
-        statement = statement.where(Property.landlord_id == current_user.id)
-    elif current_user.role_id == 3:  # Caretaker
-        # Caretaker sees only their assigned property (if model supports it)
-        # For now, assume caretaker can see all tenant payments
-        pass
-    
-    # Optional filters
-    if hse_id:
-        statement = statement.where(TenantUnit.hse_id == hse_id)
-    if tenant_id:
-        statement = statement.where(Payment.tenant_id == tenant_id)
-    if date_from:
-        statement = statement.where(Payment.created_at >= date_from)
-    if date_to:
-        statement = statement.where(Payment.created_at <= date_to)
-    
-    payments = session.exec(statement).unique().all()
-    
-    return [
-        {
-            "id": str(p.id),
-            "tenant_id": str(p.tenant_id),
-            "amount": p.amount_paid,
-            "status": p.status.value,
-            "date": p.created_at.isoformat(),
-            "transaction_ref": p.transaction_ref,
-        }
-        for p in payments
-    ]
 
 
-@router.patch("/edit/payment/{payment_id}", response_model=Payment)
+@router.patch("/edit/payment/{payment_id}", response_model=PaymentResponse)
 async def edit_payment(
     session: SessionDep,
     payment_id: UUID,
-    payment: PaymentBase
+    payment: PaymentEditSchema,
+    current_user: Annotated[User, Depends(require_management)]
 ):
+    """Modify payment metadata details (Scoped strictly to landlords or property caretakers)."""
     existing_payment = session.get(Payment, payment_id)
     
     if not existing_payment:
-        raise HTTPException(status_code=404, detail="Payment could not be found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Payment could not be found")
     
+    # Optional Security: Ensure caretaker/landlord editing has authorization over the payment's unit
     pm = payment.model_dump(exclude_unset=True)
     
     for key, value in pm.items():
